@@ -1327,13 +1327,27 @@ function renderHistory(){
         const entry = STATE.logs.find(l=>l.ts===ts);
         if(!entry) return;
         const g = id=>{ const e=document.getElementById(id); return e?e.value:''; };
-        entry.distance = g('e-distance-'+ts); entry.time = g('e-time-'+ts);
-        entry.paceAvg = g('e-paceAvg-'+ts); entry.paceBest = g('e-paceBest-'+ts);
-        entry.hrAvg = g('e-hrAvg-'+ts); entry.hrMax = g('e-hrMax-'+ts);
-        entry.workoutType = g('e-workoutType-'+ts);
-        entry.note = g('e-note-'+ts);
-        saveState();
-        renderHistory();
+        const newVals = {
+          distance: g('e-distance-'+ts), time: g('e-time-'+ts),
+          paceAvg: g('e-paceAvg-'+ts), paceBest: g('e-paceBest-'+ts),
+          hrAvg: g('e-hrAvg-'+ts), hrMax: g('e-hrMax-'+ts),
+          workoutType: g('e-workoutType-'+ts), note: g('e-note-'+ts)
+        };
+        const FIELD_LABELS = { distance:'ระยะทาง', time:'เวลารวม', paceAvg:'เพซเฉลี่ย', paceBest:'เพซดีที่สุด',
+          hrAvg:'HR เฉลี่ย', hrMax:'HR สูงสุด', workoutType:'ประเภทเวท', note:'โน้ต' };
+        const fmtFieldVal = (key,v)=> v ? (key==='workoutType' ? workoutTypeLabel(v) : v) : '(ว่าง)';
+        const changes = Object.keys(newVals).filter(key=>(entry[key]||'')!==(newVals[key]||''))
+          .map(key=>`${FIELD_LABELS[key]}: <b>${fmtFieldVal(key, entry[key])}</b> → <b>${fmtFieldVal(key, newVals[key])}</b>`);
+        if(changes.length===0){
+          document.getElementById('editform-'+ts).classList.remove('open');
+          return;
+        }
+        const meta = ROLE_META[entry.role]||{name:entry.role};
+        showConfirm('ยืนยันการแก้ไข', `<b>${meta.name}</b> · ${entry.dateStr}<br><br>${changes.join('<br>')}`, ()=>{
+          Object.assign(entry, newVals);
+          saveState();
+          renderHistory();
+        });
       };
     }
     if(btn.dataset.act==='delete'){

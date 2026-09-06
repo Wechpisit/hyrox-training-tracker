@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hyrox-tracker-v7';
+const CACHE_NAME = 'hyrox-tracker-v8';
 const APP_SHELL = [
   './',
   './index.html',
