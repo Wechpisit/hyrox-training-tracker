@@ -1077,9 +1077,11 @@ function renderWeeklyLoad(){
     const x = pad + i*slot + barGap/2;
     const y = h-pad-barH;
     const isWarn = wk.pctChange!=null && wk.pctChange>10;
+    const hasPain = wk.sessions.some(l=>l.pain);
     const color = isWarn ? '#FF3B30' : '#F5D800';
     const warnMark = isWarn ? `<text x="${(x+barWidth/2).toFixed(1)}" y="${Math.max(y-3,8).toFixed(1)}" font-size="8" fill="#FF3B30" text-anchor="middle">⚠</text>` : '';
-    return `<rect data-i="${i}" class="wl-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${color}" style="cursor:pointer;"/>${warnMark}`;
+    const painMark = hasPain ? `<text x="${(x+barWidth/2).toFixed(1)}" y="${Math.max(y-3-(isWarn?9:0),4).toFixed(1)}" font-size="8" text-anchor="middle">🩹</text>` : '';
+    return `<rect data-i="${i}" class="wl-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${color}" style="cursor:pointer;"/>${warnMark}${painMark}`;
   }).join('');
 
   const xLabelsHtml = weeks.map((wk,i)=>{
@@ -1138,7 +1140,8 @@ function renderWeeklyBreakdown(weeks){
     const dLbl = fmtDateShort(l.dateStr);
     const distTxt = l.distance ? `${l.distance} กม.` : '';
     const timeTxt = l.time ? l.time : '';
-    return `<div class="hrow" style="margin-top:6px;"><div class="top"><span>${meta.name}</span><span class="date">${dLbl}</span></div><div class="stats">${[distTxt,timeTxt].filter(Boolean).join(' · ')||'ไม่มีรายละเอียด'}</div></div>`;
+    const painRow = l.pain ? `<div class="stats" style="color:var(--red);">🩹 มีอาการเจ็บ${l.note?': '+l.note:''}</div>` : '';
+    return `<div class="hrow" style="margin-top:6px;"><div class="top"><span>${meta.name}</span><span class="date">${dLbl}</span></div><div class="stats">${[distTxt,timeTxt].filter(Boolean).join(' · ')||'ไม่มีรายละเอียด'}</div>${painRow}</div>`;
   }).join('');
   detailEl.innerHTML = rows;
 }
@@ -1180,7 +1183,7 @@ function renderProgress(){
 
   const chartArea = document.getElementById('chartArea');
   chartArea.innerHTML = '';
-  chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true));
+  chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true, speedLogs.map(l=>l.pain?(l.note||'มีอาการเจ็บ'):null)));
   chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
 }
 function fmtDateShort(ds){
@@ -1188,13 +1191,14 @@ function fmtDateShort(ds){
   const d = new Date(ds);
   return d.toLocaleDateString('th-TH',{day:'numeric',month:'short'});
 }
-function makeChart(title, values, dates, baseline, lowerIsBetter){
+function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
   const card = document.createElement('div');
   card.className = 'chart-card';
   const cleanIdx = [];
   values.forEach((v,i)=>{ if(v!=null && !isNaN(v)) cleanIdx.push(i); });
   const clean = cleanIdx.map(i=>values[i]);
   const cleanDates = cleanIdx.map(i=>dates[i]);
+  const cleanPain = cleanIdx.map(i=> painNotes ? (painNotes[i]||null) : null);
   if(clean.length===0){
     card.innerHTML = `<div class="title">${title}</div><div class="sub">ยังไม่มีข้อมูลพอสำหรับกราฟ บันทึกผลซ้อมเพิ่มเติมเพื่อดูเทรนด์</div>`;
     return card;
@@ -1234,7 +1238,12 @@ function makeChart(title, values, dates, baseline, lowerIsBetter){
   const gridLinesSvg = yLevels.map(g=>`<line x1="${pad}" y1="${g.gy.toFixed(1)}" x2="${w-pad}" y2="${g.gy.toFixed(1)}" stroke="#2A2A2A" stroke-width="1"/>`).join('');
   const yLabelsHtml = yLevels.map(g=>`<span style="position:absolute;left:2px;top:${((g.gy/h)*100).toFixed(1)}%;transform:translateY(-50%);">${fmtAxisVal(g.v)}</span>`).join('');
 
-  const pointCircles = pts.map((p,i)=>`<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#F5D800"/>`).join('');
+  const pointCircles = pts.map((p,i)=>{
+    const isPain = !!cleanPain[i];
+    const dot = `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${isPain?'#FF3B30':'#F5D800'}"/>`;
+    const painMark = isPain ? `<text x="${p[0].toFixed(1)}" y="${Math.max(p[1]-6,8).toFixed(1)}" font-size="8" text-anchor="middle">🩹</text>` : '';
+    return dot + painMark;
+  }).join('');
 
   card.innerHTML = `
     <div class="title">${title}</div>
@@ -1269,7 +1278,8 @@ function makeChart(title, values, dates, baseline, lowerIsBetter){
     const py = p[1]*(rect.height/h);
     tipEl.style.left = px+'px';
     tipEl.style.top = py+'px';
-    tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}`;
+    const painSuffix = cleanPain[nearest] ? ` · 🩹 ${cleanPain[nearest]}` : '';
+    tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}${painSuffix}`;
     tipEl.style.display = 'block';
     guideEl.setAttribute('x1', p[0]); guideEl.setAttribute('x2', p[0]);
     guideEl.style.display = 'block';
