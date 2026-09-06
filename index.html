@@ -997,12 +997,12 @@ function parseTimeToMin(t){
   if(parts.length===2){ const [m,s]=parts; return m+s/60; }
   return 0;
 }
-function weekLabel(weekStart){
+function weekLabelParts(weekStart){
   const end = new Date(weekStart.getTime()+6*86400000);
   const mo = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   const sD = weekStart.getDate(), sM = mo[weekStart.getMonth()];
   const eD = end.getDate(), eM = mo[end.getMonth()];
-  return sM===eM ? `${sD}-${eD} ${eM}` : `${sD} ${sM}-${eD} ${eM}`;
+  return { days: `${sD}-${eD}`, month: sM===eM ? eM : `${sM}-${eM}` };
 }
 /** Returns the last `numWeeks` calendar weeks (Mon-Sun) ending with the current week, each
  * { weekStart, km, min, sessions[], pctChange }. pctChange compares km against the immediately
@@ -1064,7 +1064,8 @@ function renderWeeklyLoad(){
 
   const xLabelsHtml = weeks.map((wk,i)=>{
     const pct = ((i+0.5)/weeks.length)*100;
-    return `<span style="position:absolute;left:${pct}%;transform:translateX(-50%);">${weekLabel(wk.weekStart)}</span>`;
+    const parts = weekLabelParts(wk.weekStart);
+    return `<span style="position:absolute;left:${pct}%;top:0;transform:translateX(-50%);text-align:center;line-height:1.3;">${parts.days}<br>${parts.month}</span>`;
   }).join('');
 
   const lastWeek = weeks[weeks.length-1];
@@ -1085,7 +1086,7 @@ function renderWeeklyLoad(){
       <div class="chip wl-metric ${weeklyLoadMetric==='min'?'sel':''}" data-metric="min">นาที</div>
     </div>
     <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:120px;display:block;">${bars}</svg>
-    <div style="position:relative;height:14px;font-size:9.5px;color:var(--muted);margin-top:2px;">${xLabelsHtml}</div>
+    <div style="position:relative;height:24px;font-size:9px;color:var(--muted);margin-top:2px;">${xLabelsHtml}</div>
     <div class="sub" style="margin-top:8px;">${summaryHtml}</div>
     <div id="weeklyLoadDetail"></div>
   `;
