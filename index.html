@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hyrox Training Queue</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#F5D800">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hyrox Tracker">
+<style>
+  :root{
+    --bg:#0A0A0A; --card:#161616; --card2:#1F1F1F; --line:#2A2A2A;
+    --text:#F2F2F0; --muted:#8A8A8A; --yellow:#F5D800; --red:#FF3B30;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:36px;}
+  .wrap{max-width:480px;margin:0 auto;padding:16px 14px 0;}
+
+  .ctx{background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:14px;
+    display:flex;justify-content:space-between;align-items:center;}
+  .ctx .left b{font-size:15px;display:block;}
+  .ctx .left span{font-size:12.5px;color:var(--muted);}
+  .ctx .right{text-align:right;}
+  .ctx .right .num{font-size:22px;font-weight:800;color:var(--yellow);}
+  .ctx .right .lbl{font-size:11px;color:var(--muted);}
+
+  .tabs{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;}
+  .tab{flex:0 0 auto;padding:9px 16px;border-radius:999px;background:var(--card2);
+    color:var(--muted);font-size:13.5px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;}
+  .tab.active{background:var(--yellow);color:#0A0A0A;}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .daytype{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .daytype .label{font-size:13px;color:var(--muted);}
+  .daytype .val{font-size:15px;font-weight:700;margin-top:2px;}
+  .editbtn{background:none;border:1px solid var(--line);color:var(--text);
+    padding:7px 12px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .picker{display:none;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .picker.open{display:flex;}
+  .chip{padding:8px 12px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
+    color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;}
+  .chip.sel{background:var(--yellow);color:#0A0A0A;border-color:var(--yellow);}
+
+  .hero{background:var(--card);border-radius:20px;padding:20px 18px;border-left:5px solid var(--yellow);margin-bottom:16px;}
+  .hero .eyebrow{font-size:12.5px;color:var(--muted);}
+  .hero h1{font-size:24px;font-weight:800;margin:4px 0 10px;line-height:1.15;}
+  .plain-tip{background:var(--card2);border-radius:12px;padding:10px 12px;font-size:13.5px;
+    line-height:1.5;margin-bottom:12px;}
+  .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .meta-box{background:var(--card2);border-radius:12px;padding:10px 12px;}
+  .meta-box .k{font-size:11px;color:var(--muted);}
+  .meta-box .v{font-size:14.5px;font-weight:700;margin-top:2px;}
+  .structure{font-size:13.5px;line-height:1.55;margin-bottom:4px;}
+
+  .actions{display:flex;gap:10px;margin-top:14px;}
+  .btn{flex:1;padding:13px 0;border-radius:12px;border:none;font-weight:700;font-size:14px;cursor:pointer;}
+  .btn-yes{background:var(--yellow);color:#0A0A0A;}
+  .btn-partial{background:var(--card2);color:var(--text);border:1px solid var(--line);}
+  .btn-ghost{background:none;color:var(--muted);border:1px solid var(--line);}
+  .btn-danger{background:var(--red);color:#fff;}
+  .btn-small{padding:8px 0;font-size:12.5px;border-radius:10px;}
+
+  .painrow{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
+    padding:10px 12px;background:var(--card2);border-radius:12px;}
+  .painrow span{font-size:13px;}
+  .toggle{width:44px;height:26px;border-radius:14px;background:var(--line);position:relative;cursor:pointer;border:none;}
+  .toggle.on{background:var(--red);}
+  .toggle .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;
+    transition:transform .15s;}
+  .toggle.on .knob{transform:translateX(18px);}
+
+  details.more{background:var(--card);border-radius:14px;padding:12px 14px;margin-top:12px;}
+  details.more summary{font-size:13.5px;font-weight:700;cursor:pointer;list-style:none;}
+  details.more summary::-webkit-details-marker{display:none;}
+  details.more summary::after{content:'+ บันทึกละเอียด';float:right;color:var(--muted);font-weight:500;}
+  details.more[open] summary::after{content:'– ซ่อน';}
+  .field{margin-top:10px;}
+  .field label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;}
+  .field input, .field textarea{width:100%;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;color:var(--text);font-size:13.5px;font-family:inherit;}
+  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .rpe-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .rpe-btn{width:30px;height:30px;border-radius:8px;background:var(--card2);border:1px solid var(--line);
+    color:var(--text);font-size:12.5px;cursor:pointer;}
+  .rpe-btn.sel{background:var(--yellow);color:#0A0A0A;border-color:var(--yellow);}
+
+  .save-tag{font-size:12px;color:var(--yellow);margin-top:10px;display:none;text-align:center;}
+
+  .section-title{font-size:13px;color:var(--muted);margin:20px 0 8px;line-height:1.5;}
+  .qrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
+  .qrow .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px;}
+  .qrow .top b{font-weight:700;}
+  .qrow .top span{color:var(--muted);font-size:12.5px;}
+  .qrow .bar{height:6px;border-radius:3px;background:var(--card2);overflow:hidden;}
+  .qrow .fill{height:100%;background:var(--yellow);border-radius:3px;}
+  .qrow .next{font-size:12px;color:var(--muted);margin-top:6px;}
+
+  .uprow{background:var(--card);border-radius:12px;padding:10px 14px;margin-bottom:6px;
+    display:flex;justify-content:space-between;align-items:center;}
+  .uprow.today{border:1.5px solid var(--yellow);}
+  .uprow .d{font-size:12px;color:var(--muted);}
+  .uprow .role{font-size:14px;font-weight:700;margin-top:2px;}
+  .uprow .n{font-size:11.5px;color:var(--muted);}
+
+  .calgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
+  .calcell{background:var(--card);border-radius:12px;padding:10px 8px;text-align:center;}
+  .calcell .slot{font-size:11px;color:var(--muted);}
+  .calcell .role{font-size:12.5px;font-weight:700;margin-top:4px;line-height:1.3;}
+
+  .cal-month-title{font-size:15px;font-weight:700;margin-bottom:10px;}
+  .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+  .cal-weekdays span{text-align:center;font-size:10.5px;color:var(--muted);}
+  .cal-daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px;}
+  .caldaycell{aspect-ratio:1/1;border-radius:10px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;cursor:pointer;padding:2px;position:relative;}
+  .caldaycell.blank{visibility:hidden;}
+  .caldaycell.future{background:var(--card2);}
+  .caldaycell.past{background:#101010;}
+  .caldaycell.today{background:var(--yellow);}
+  .caldaycell .num{font-size:11px;color:var(--muted);}
+  .caldaycell.today .num{color:#0A0A0A;font-weight:700;}
+  .caldaycell .abbr{font-size:9.5px;font-weight:800;margin-top:1px;}
+  .caldaycell .dot{width:6px;height:6px;border-radius:50%;margin-top:2px;}
+  .caldaycell.selected{outline:2px solid #fff;}
+
+  .cal-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:var(--muted);margin-bottom:14px;}
+  .cal-legend .item{display:flex;align-items:center;gap:5px;}
+  .cal-legend .dot{width:8px;height:8px;border-radius:50%;}
+  .cal-legend .swatch{width:12px;height:12px;border-radius:4px;}
+
+  .cal-detail{background:var(--card);border-radius:14px;padding:14px 16px;}
+  .cal-detail .dtitle{font-size:14px;font-weight:700;margin-bottom:6px;}
+  .cal-detail .drow{font-size:12.5px;color:var(--muted);margin-top:3px;}
+
+  .chart-card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:14px;}
+  .chart-card .title{font-size:14.5px;font-weight:700;}
+  .chart-card .sub{font-size:12px;color:var(--muted);margin-bottom:4px;}
+  .chart-card .num{font-size:26px;font-weight:800;color:var(--yellow);margin:4px 0 6px;}
+  .chart-card svg{width:100%;height:120px;display:block;}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:6px;}
+  .legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
+
+  .pr-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .pr-box{background:var(--card);border-radius:14px;padding:12px 14px;}
+  .pr-box .k{font-size:11.5px;color:var(--muted);}
+  .pr-box .v{font-size:18px;font-weight:800;margin-top:3px;color:var(--yellow);}
+  .pr-box .base{font-size:11px;color:var(--muted);margin-top:2px;}
+
+  .hrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
+  .hrow .top{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;}
+  .hrow .top .date{color:var(--muted);font-weight:500;font-size:12px;}
+  .hrow .stats{font-size:12.5px;color:var(--muted);margin-top:4px;}
+  .hrow .painflag{color:var(--red);font-weight:700;}
+  .hrow .seedflag{color:var(--muted);font-style:italic;}
+  .hrow .hactions{display:flex;gap:8px;margin-top:8px;}
+  .hrow .hactions button{flex:1;}
+  .empty{text-align:center;color:var(--muted);font-size:13px;padding:30px 0;}
+
+  .editform{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:none;}
+  .editform.open{display:block;}
+
+  .backup{background:var(--card);border-radius:14px;padding:12px 14px;margin-top:16px;}
+  .backup summary{font-size:13px;font-weight:700;cursor:pointer;list-style:none;color:var(--muted);}
+  .backup summary::-webkit-details-marker{display:none;}
+  .backup textarea{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;
+    padding:8px;color:var(--text);font-size:11px;margin-top:8px;font-family:monospace;}
+
+  /* Confirm modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-end;justify-content:center;z-index:50;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--card);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px 18px 24px;}
+  .modal h2{font-size:16px;margin:0 0 10px;}
+  .modal .summary{font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:16px;}
+  .modal .summary b{color:var(--text);}
+  .modal .row{display:flex;gap:10px;}
+
+  footer{text-align:center;color:#2A2A2A;font-size:11px;padding:20px 0 4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="ctx">
+    <div class="left">
+      <b id="ctxPhase">--</b>
+      <span id="ctxSub">--</span>
+    </div>
+    <div class="right">
+      <div class="num" id="ctxCountdown">--</div>
+      <div class="lbl">วันจนถึงวันแข่ง</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="today">Today</button>
+    <button class="tab" data-tab="queue">Plan</button>
+    <button class="tab" data-tab="calendar">Calendar</button>
+    <button class="tab" data-tab="progress">Performance</button>
+    <button class="tab" data-tab="history">History</button>
+  </div>
+
+  <div class="panel active" id="panel-today">
+    <div class="daytype">
+      <div>
+        <div class="label">ประเภทวันนี้ (คำนวณจากวงจรกะ)</div>
+        <div class="val" id="dayTypeVal">--</div>
+      </div>
+      <button class="editbtn" id="editDayBtn">แก้ไขวันนี้</button>
+    </div>
+    <div class="picker" id="dayPicker"></div>
+
+    <div class="hero" id="hero"></div>
+
+    <div class="save-tag" id="savedTag">บันทึกแล้ว ✓</div>
+  </div>
+
+  <div class="panel" id="panel-queue">
+    <div class="section-title">ลำดับที่จะถึง (เรียงตามวันจริง)</div>
+    <div id="upcomingList"></div>
+    <div class="section-title">ความคืบหน้าแต่ละประเภท (เฟส: <span id="queuePhaseLabel">--</span>)</div>
+    <div id="queueList"></div>
+  </div>
+
+  <div class="panel" id="panel-calendar">
+    <div class="cal-month-title" id="calMonthTitle">--</div>
+    <div class="cal-weekdays"><span>อา</span><span>จ</span><span>อ</span><span>พ</span><span>พฤ</span><span>ศ</span><span>ส</span></div>
+    <div class="cal-daygrid" id="calDayGrid"></div>
+    <div class="cal-legend" id="calLegend"></div>
+    <div class="cal-detail" id="calDetail"></div>
+  </div>
+
+  <div class="panel" id="panel-progress">
+    <div class="section-title">สถิติส่วนตัว (จากจุดเริ่มต้น)</div>
+    <div class="pr-grid" id="prGrid"></div>
+    <div class="section-title">เทรนด์ตามเวลา</div>
+    <div id="chartArea"></div>
+  </div>
+
+  <div class="panel" id="panel-history">
+    <div class="section-title">ประวัติการซ้อมทั้งหมด (แก้ไข/ลบได้)</div>
+    <div id="historyList"></div>
+    <details class="backup">
+      <summary>สำรอง / กู้คืนข้อมูล</summary>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;">คัดลอกข้อความด้านล่างเก็บไว้เป็นไฟล์สำรอง หรือวางข้อมูลเก่ากลับเข้ามาเพื่อกู้คืน</div>
+      <textarea id="backupText" rows="4" readonly></textarea>
+      <div class="actions" style="margin-top:8px;">
+        <button class="btn btn-ghost btn-small" id="copyBackupBtn">คัดลอก</button>
+        <button class="btn btn-ghost btn-small" id="restoreBackupBtn">กู้คืนจากข้อความนี้</button>
+      </div>
+    </details>
+  </div>
+
+  <footer>Hyrox Flexible Queue Tracker</footer>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h2 id="confirmTitle">ยืนยันการบันทึก</h2>
+    <div class="summary" id="confirmSummary"></div>
+    <div class="row">
+      <button class="btn btn-ghost" id="confirmCancel">ยกเลิก</button>
+      <button class="btn btn-yes" id="confirmOk">ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ========================= CONFIG ========================= */
+const CYCLE_ANCHOR = new Date(2026,7,22);
+const TAPER_START  = new Date(2027,0,18);
+const RACEWEEK_START = new Date(2027,1,8);
+const RACE_DAY = new Date(2027,1,11);
+
+const BASELINE = { easyPace: '7:45', bestTempoPace: '6:41', bestTempoDate:'24/08/2026' };
+
+const CYCLE_MAIN  = ['easy','speed','weight','long','restday','restday','weightNight','easyRecovery'];
+const CYCLE_TAPER = ['easyTaper','racePace','restMobility','temposhort','restday','restday','weightLight','easyShort'];
+
+const ROLE_META = {
+  easy:        { name:'Easy Run' },
+  speed:       { name:'Speed Session' },
+  weight:      { name:'Weight Training' },
+  long:        { name:'Long Run' },
+  weightNight: { name:'Weight Training (กะดึก)' },
+  easyRecovery:{ name:'Easy Run ฟื้นตัว' },
+  recovery:    { name:'Active Recovery' },
+  easyTaper:   { name:'Easy Run' },
+  racePace:    { name:'Race-Pace Touch' },
+  restMobility:{ name:'Rest / Mobility' },
+  temposhort:  { name:'Tempo Run (สั้น)' },
+  weightLight: { name:'Weight (เบาลง)' },
+  easyShort:   { name:'Easy Run (สั้น)' },
+};
+
+const RACEWEEK_SEQ = [
+  { name:'Mobility + Activation เบาๆ', structure:'ยืดเหยียด + Activation เบาๆ ไม่เข้าเวทหนัก', tip:'เตรียมร่างกายให้สดสำหรับวันแข่ง' },
+  { name:'Easy Shakeout Run', structure:'วิ่งเบาๆ 15-20 นาที + Strides 4x20 วิ', tip:'ปลุกกล้ามเนื้อ ไม่ต้องเหนื่อย' },
+  { name:'Rest + เตรียมตัว', structure:'พักเต็มที่ เตรียมอุปกรณ์ Carb-load', tip:'นอนให้พอ ตรวจเช็คอุปกรณ์แข่ง' },
+  { name:'🏁 RACE DAY - Hyrox', structure:'แข่งจริง!', tip:'ไปลุยตามที่ซ้อมมา สู้ๆ!' },
+];
+
+function speedProgression(n){
+  const steps = [
+    {distance:'WU 10 นาที Easy + Strides 4-6 x 15-20 วินาที + CD 10 นาที', pace:'~85-90% ความเร็วสูงสุด', structure:'เน้นฟอร์มการวิ่ง ไม่เน้นความเร็ว'},
+    {distance:'WU 10 นาที + Fartlek เร็ว 1 นาที / ฟื้นตัว 2 นาที x 6 รอบ + CD 10 นาที', pace:'6:30-7:00 /km', structure:'สลับเร็ว-ช้าตามจังหวะ ไม่ดันหนักเกินไป'},
+    {distance:'WU 10 นาที + Fartlek เร็ว 1 นาที / ฟื้นตัว 2 นาที x 8 รอบ + CD 10 นาที', pace:'6:15-6:45 /km', structure:'เพิ่มจำนวนรอบจากครั้งก่อน'},
+    {distance:'WU 10 นาที + 200-300m x 6 (เดินฟื้นตัวเท่าเวลาวิ่ง) + CD 10 นาที', pace:'6:00-6:30 /km', structure:'เริ่มเข้าใกล้เพซเป้าหมายจริง'},
+    {distance:'WU 10 นาที + 200-300m x 8 (เดินฟื้นตัวเท่าเวลาวิ่ง) + CD 10 นาที', pace:'6:00-6:30 /km', structure:'เพิ่มจำนวนรอบ เช็คหน้าแข้งก่อน-หลัง'},
+    {distance:'WU 10 นาที + 400m x 4 (เดินฟื้นตัวเท่าเวลาวิ่ง) + CD 10 นาที', pace:'6:00 /km', structure:'เริ่ม 400m ครั้งแรก คุยกับ PT ก่อนเพิ่มความหนัก'},
+  ];
+  if(n <= steps.length) return steps[n-1];
+  const extra = n - steps.length;
+  const reps = Math.min(4 + extra, 10);
+  return {distance:`WU 10 นาที + 400m x ${reps} (เดินฟื้นตัวเท่าเวลาวิ่ง) + CD 10 นาที`, pace:'6:00 /km', structure:'เพิ่มจำนวนรอบทีละน้อย คุยกับ PT ทุกครั้งก่อนเพิ่มความหนัก'};
+}
+function longProgression(n){
+  const dist = Math.min(6 + Math.floor((n-1)/2)*0.5, 12);
+  const paceStart = 7.5, paceEnd = 6.75;
+  const pace = Math.max(paceEnd, paceStart - (n-1)*0.05);
+  const mm = Math.floor(pace), ss = Math.round((pace-mm)*60);
+  return {distance:`${dist} km`, pace:`~${mm}:${ss.toString().padStart(2,'0')} /km`, structure:'วิ่งยาวช้า สร้างฐาน Aerobic — ถ้าเหนื่อยมากลดระยะได้ 10-15%'};
+}
+function easyProgression(n, short){
+  return {distance: short? '15-20 นาที':'25-30 นาที', pace:'สบาย พูดคุยได้', structure: short? 'วิ่งฟื้นตัวหลังกะดึกคืนที่ 2 (บังคับ)':'วิ่งเบาๆ หรือสลับเป็นเวทเบาๆ ก็ได้ถ้ายังไม่ฟื้นตัวเต็มที่'};
+}
+function fixedWeight(){ return {distance:'ตามโปรแกรม PT', pace:'-', structure:'เวทเทรนนิ่งกับ PT ตามโปรแกรมที่วางไว้'}; }
+function fixedRacePace(n){ return {distance:`${Math.min(3+n,7)}x1km`, pace:'6:00 /km', structure:'จ๊อกฟื้นตัว 90 วินาที-2 นาที ระหว่างรอบ — key session สำคัญของช่วง Taper'}; }
+function fixedTemposhort(){ return {distance:'WU 10 นาที + Tempo 15-20 นาที + CD 5 นาที', pace:'6:00 /km', structure:'รักษาความแข็งแรงของ Threshold ไม่ต้องดันเพิ่ม'}; }
+function fixedRestMobility(){ return {distance:'-', pace:'-', structure:'พักผ่อน หรือยืดเหยียดเบาๆ เตรียมร่างกาย'}; }
+
+function plainTip(role){
+  const tips = {
+    easy:'วิ่งช้าๆ สบายๆ พูดคุยได้ระหว่างวิ่ง เป็นวันฟื้นตัว',
+    speed:'วันนี้เป็นวันซ้อมเร็ว วอร์มร่างกายให้ทั่วก่อนเริ่ม และหยุดทันทีถ้ารู้สึกเจ็บผิดปกติ',
+    weight:'วันเข้าเวทกับ PT ทำตามโปรแกรมที่วางไว้',
+    long:'วิ่งช้าๆ ระยะไกล เน้นวิ่งจบมากกว่าเร็ว ถ้าเหนื่อยมากลดระยะได้',
+    weightNight:'วันเข้าเวทกับ PT เลือกช่วงเวลาก่อน/หลังเข้ากะดึกที่สะดวก',
+    easyRecovery:'วิ่งฟื้นตัวหลังกะดึกคืนที่ 2 บังคับทำเบาๆ ได้ ไม่ต้องเร็ว',
+    recovery:'ห้ามวิ่งกระแทกวันนี้ เดิน ปั่นจักรยาน หรือว่ายน้ำเบาๆ พอ ประคบเย็นถ้ายังเจ็บ',
+    restday:'วันพักเต็มที่ ไม่ต้องออกกำลังกาย',
+    easyTaper:'วิ่งเบาๆ ผ่อนคลาย ใกล้แข่งแล้วไม่ต้องหักโหม',
+    racePace:'ซ้อมจำลองเพซแข่งจริง ควบคุมเพซให้นิ่ง ไม่ต้องเหนื่อยมาก',
+    restMobility:'วันพักผ่อนหรือยืดเหยียดเบาๆ เตรียมร่างกายก่อนแข่ง',
+    temposhort:'รักษาความฟิตไว้ ไม่ต้องดันหนักเพิ่มแล้วช่วงนี้',
+    weightLight:'เวทเบาลงมาก เน้นความเร็วการเคลื่อนไหว ไม่เน้นน้ำหนัก',
+    easyShort:'วิ่งเบาๆ สั้นๆ ผ่อนคลาย',
+  };
+  return tips[role] || 'ทำตามรายละเอียดด้านล่าง ถ้าไม่แน่ใจให้คุยกับ PT ก่อน';
+}
+function isRestRole(role){ return role==='restday'; }
+function isWeightRole(role){ return role==='weight'||role==='weightNight'||role==='weightLight'; }
+
+function buildSession(role, n){
+  if(role==='speed') return speedProgression(n);
+  if(role==='long') return longProgression(n);
+  if(role==='easy') return easyProgression(n,false);
+  if(role==='easyRecovery') return easyProgression(n,true);
+  if(role==='easyTaper') return easyProgression(n,false);
+  if(role==='easyShort') return easyProgression(n,true);
+  if(isWeightRole(role)) return fixedWeight();
+  if(role==='racePace') return fixedRacePace(n);
+  if(role==='temposhort') return fixedTemposhort();
+  if(role==='restMobility') return fixedRestMobility();
+  if(role==='recovery') return {distance:'เดิน 20-30 นาที / ปั่นจักรยาน / ว่ายน้ำเบาๆ', pace:'-', structure:'งดวิ่งกระแทกโดยเด็ดขาด ประคบเย็น 15 นาทีหลังกิจกรรม + ยืดน่อง/หน้าแข้งเบาๆ'};
+  return {distance:'-', pace:'-', structure:'-'};
+}
+
+/* ========================= STATE (localStorage) ========================= */
+const STORAGE_KEY = 'hyrox-app-state-v1';
+let STATE = { counts:{}, taperCounts:{}, dayOverride:{}, pendingRecovery:false, logs:[] };
+function ensureCounts(obj, keys){ keys.forEach(k=>{ if(!(k in obj)) obj[k]=0; }); }
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) STATE = Object.assign(STATE, JSON.parse(raw));
+  }catch(e){ console.warn('load failed', e); }
+  ensureCounts(STATE.counts, CYCLE_MAIN);
+  ensureCounts(STATE.taperCounts, CYCLE_TAPER);
+  saveState();
+}
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }
+  catch(e){ alert('บันทึกไม่สำเร็จ: ' + e.message); }
+}
+/* ========================= DATE / ROLE LOGIC ========================= */
+function dateStr(d){ return d.toISOString().slice(0,10); }
+function daysBetween(a,b){ return Math.round((b-a)/86400000); }
+function era(d){
+  if(d >= RACEWEEK_START) return 'raceweek';
+  if(d >= TAPER_START) return 'taper';
+  return 'main';
+}
+function cycleRole(d){
+  const e = era(d);
+  if(e==='raceweek'){
+    const idx = Math.min(Math.max(daysBetween(RACEWEEK_START, d),0), RACEWEEK_SEQ.length-1);
+    return {era:e, raceweekIdx: idx};
+  }
+  const table = e==='taper' ? CYCLE_TAPER : CYCLE_MAIN;
+  const diff = daysBetween(CYCLE_ANCHOR, d);
+  const pos = ((diff % 8)+8)%8;
+  const idx = (pos+4)%8;
+  return {era:e, role: table[idx]};
+}
+function resolveToday(d){
+  const ds = dateStr(d);
+  if(STATE.dayOverride[ds]){
+    const e = era(d)==='raceweek' ? 'main' : era(d);
+    return {era: e, role: STATE.dayOverride[ds], overridden:true};
+  }
+  if(STATE.pendingRecovery){
+    const e = era(d)==='raceweek' ? 'main' : era(d);
+    return {era:e, role:'recovery', forcedRecovery:true};
+  }
+  const r = cycleRole(d);
+  if(r.era==='raceweek') return r;
+  return {era:r.era, role:r.role};
+}
+
+function slotIdx(d){
+  const diff = daysBetween(CYCLE_ANCHOR, d);
+  const pos = ((diff % 8)+8)%8;
+  return (pos+4)%8;
+}
+const SLOT_LABEL_BY_IDX = ['OFF1','OFF2','OFF3','OFF4','DAY1','DAY2','NIGHT1','NIGHT2'];
+function slotLabel(d){ return SLOT_LABEL_BY_IDX[slotIdx(d)]; }
+
+const today = new Date(); today.setHours(0,0,0,0);
+function phaseLabel(e){ return e==='raceweek' ? 'Race Week' : (e==='taper' ? 'Taper' : 'Base / Build / Peak'); }
+
+function renderCtx(){
+  const days = daysBetween(today, RACE_DAY);
+  document.getElementById('ctxCountdown').textContent = days>=0?days:0;
+  const r = resolveToday(today);
+  document.getElementById('ctxPhase').textContent = phaseLabel(r.era);
+  document.getElementById('ctxSub').textContent = today.toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+}
+
+const OVERRIDE_OPTIONS_MAIN = ['easy','speed','weight','long','restday'];
+const OVERRIDE_OPTIONS_TAPER = ['easyTaper','racePace','restMobility','temposhort','restday'];
+
+let pickerOpen = false;
+function renderDayTypePicker(){
+  const r = resolveToday(today);
+  const opts = r.era==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN;
+  const el = document.getElementById('dayPicker');
+  el.innerHTML = opts.map(o=>{
+    const label = isRestRole(o) ? 'วันพัก' : ROLE_META[o].name;
+    const sel = (r.role===o) ? 'sel':'';
+    return `<div class="chip ${sel}" data-role="${o}">${label}</div>`;
+  }).join('');
+  el.querySelectorAll('.chip').forEach(c=>{
+    c.onclick = ()=>{
+      STATE.dayOverride[dateStr(today)] = c.dataset.role;
+      saveState();
+      pickerOpen = false;
+      el.classList.remove('open');
+      renderAll();
+    };
+  });
+}
+
+/* ---------- Confirm modal helper ---------- */
+function showConfirm(title, summaryHtml, onConfirm){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmSummary').innerHTML = summaryHtml;
+  const overlay = document.getElementById('confirmOverlay');
+  overlay.classList.add('open');
+  const okBtn = document.getElementById('confirmOk');
+  const cancelBtn = document.getElementById('confirmCancel');
+  const cleanup = ()=>{ overlay.classList.remove('open'); okBtn.onclick=null; cancelBtn.onclick=null; };
+  okBtn.onclick = ()=>{ cleanup(); onConfirm(); };
+  cancelBtn.onclick = cleanup;
+}
+
+/* ========================= RENDER: TODAY ========================= */
+function renderToday(){
+  const r = resolveToday(today);
+  document.getElementById('dayTypeVal').textContent =
+    (r.era==='raceweek' ? 'สัปดาห์แข่ง' : (isRestRole(r.role) ? 'วันพัก' : (ROLE_META[r.role]?ROLE_META[r.role].name:r.role)))
+    + (r.overridden ? ' (แก้ไขเอง)' : '') + (r.forcedRecovery ? ' (แนะนำพักฟื้น)' : '');
+
+  const hero = document.getElementById('hero');
+
+  if(r.era==='raceweek'){
+    const item = RACEWEEK_SEQ[r.raceweekIdx];
+    hero.innerHTML = `
+      <div class="eyebrow">สัปดาห์แข่ง · วันที่ ${r.raceweekIdx+1} จาก ${RACEWEEK_SEQ.length}</div>
+      <h1>${item.name}</h1>
+      <div class="plain-tip">${item.tip}</div>
+      <div class="structure">${item.structure}</div>
+      <div class="actions"><button class="btn btn-yes" id="doneBtn">ทำแล้ว</button></div>
+    `;
+    bindActions(null, r.era, 0);
+    return;
+  }
+
+  if(isRestRole(r.role)){
+    hero.style.borderLeftColor = 'var(--yellow)';
+    hero.innerHTML = `
+      <div class="eyebrow">${phaseLabel(r.era)}</div>
+      <h1>วันพัก</h1>
+      <div class="plain-tip">${plainTip('restday')}</div>
+      <div class="structure">ไม่มีเซสชันซ้อมวันนี้ ให้ร่างกายพักเต็มที่</div>
+    `;
+    return;
+  }
+
+  const role = r.role;
+  const counts = r.era==='taper' ? STATE.taperCounts : STATE.counts;
+  const n = (counts[role]||0) + 1;
+  const sess = buildSession(role, n);
+  const meta = ROLE_META[role] || {name:role};
+
+  hero.style.borderLeftColor = role==='recovery' ? 'var(--red)' : 'var(--yellow)';
+  hero.innerHTML = `
+    <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
+    <h1>${meta.name}</h1>
+    <div class="plain-tip">${plainTip(role)}</div>
+    <div class="meta-grid">
+      <div class="meta-box"><div class="k">ระยะ/เวลา</div><div class="v">${sess.distance}</div></div>
+      <div class="meta-box"><div class="k">เพซเป้าหมาย</div><div class="v">${sess.pace}</div></div>
+    </div>
+    <div class="structure">${sess.structure}</div>
+    <div class="actions">
+      <button class="btn btn-yes" id="doneBtn">ทำสำเร็จ</button>
+      <button class="btn btn-partial" id="partialBtn">ทำไม่ครบ</button>
+    </div>
+    <div class="painrow">
+      <span>มีอาการเจ็บ/ปวดไหม</span>
+      <button class="toggle" id="painToggle"><div class="knob"></div></button>
+    </div>
+    <details class="more">
+      <summary>บันทึกละเอียด</summary>
+      <div class="field-grid">
+        <div class="field"><label>ระยะทาง (กม.)</label><input type="text" id="fDistance" placeholder="เช่น 6.2"></div>
+        <div class="field"><label>เวลารวม</label><input type="text" id="fTime" placeholder="เช่น 45:00"></div>
+        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="fPaceAvg" placeholder="เช่น 6:35/km"></div>
+        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="fPaceBest" placeholder="เช่น 6:10/km"></div>
+        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="fHrAvg" placeholder="bpm"></div>
+        <div class="field"><label>HR สูงสุด</label><input type="text" id="fHrMax" placeholder="bpm"></div>
+        <div class="field"><label>Cadence เฉลี่ย</label><input type="text" id="fCadence" placeholder="spm"></div>
+        <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="fGct" placeholder="ms"></div>
+      </div>
+      <div class="field">
+        <label>ความรู้สึก (RPE 1-10, ข้ามได้)</label>
+        <div class="rpe-row" id="rpeRow"></div>
+      </div>
+      <div class="field"><label>โน้ต</label><textarea id="fNote" rows="2" placeholder="ความรู้สึก, สภาพอากาศ, อื่นๆ..."></textarea></div>
+    </details>
+  `;
+
+  const rpeRow = document.getElementById('rpeRow');
+  let rpeVal = null;
+  for(let i=1;i<=10;i++){
+    const b = document.createElement('button');
+    b.className='rpe-btn'; b.textContent=i; b.type='button';
+    b.onclick = ()=>{ rpeVal = (rpeVal===i)?null:i;
+      rpeRow.querySelectorAll('.rpe-btn').forEach(x=>x.classList.remove('sel'));
+      if(rpeVal) b.classList.add('sel');
+    };
+    rpeRow.appendChild(b);
+  }
+  let painOn = false;
+  const painToggle = document.getElementById('painToggle');
+  painToggle.onclick = ()=>{ painOn = !painOn; painToggle.classList.toggle('on', painOn); };
+
+  bindActions(role, r.era, n, ()=>({rpe:rpeVal, pain:painOn}));
+}
+
+function bindActions(role, eraName, n, extraGetter){
+  function val(id){ const e=document.getElementById(id); return e?e.value:''; }
+  const openConfirm = (partial)=>{
+    const extra = extraGetter ? extraGetter() : {pain:false, rpe:null};
+    const meta = role ? (ROLE_META[role]||{name:role}) : {name:'Race Day'};
+    const fields = [
+      ['ระยะ/เวลา', val('fDistance')||val('fTime')],
+      ['เพซเฉลี่ย', val('fPaceAvg')],
+      ['HR เฉลี่ย', val('fHrAvg')],
+      ['ความรู้สึก (RPE)', extra.rpe],
+      ['มีอาการเจ็บ/ปวด', extra.pain?'ใช่ ⚠️':'ไม่มี'],
+    ].filter(f=>f[1]);
+    const summary = `<b>${meta.name}${n?(' · ครั้งที่ '+n):''}</b>${partial?' — ทำไม่ครบ':' — ทำสำเร็จ'}<br><br>` +
+      fields.map(f=>`${f[0]}: <b>${f[1]}</b>`).join('<br>') +
+      (fields.length===0 ? 'ไม่ได้กรอกรายละเอียดเพิ่มเติม' : '');
+    showConfirm('ยืนยันการบันทึก', summary, ()=>doSave(role, eraName, n, partial, extra));
+  };
+  const doneBtn = document.getElementById('doneBtn');
+  if(doneBtn) doneBtn.onclick = ()=>openConfirm(false);
+  const partialBtn = document.getElementById('partialBtn');
+  if(partialBtn) partialBtn.onclick = ()=>openConfirm(true);
+}
+
+function doSave(role, eraName, n, partial, extra){
+  function val(id){ const e=document.getElementById(id); return e?e.value:''; }
+  const entry = {
+    ts: Date.now(), dateStr: dateStr(today), role: role||'raceweek', era: eraName, occurrence:n,
+    done: true, partial: !!partial, pain: !!extra.pain, rpe: extra.rpe,
+    distance: val('fDistance'), time: val('fTime'), paceAvg: val('fPaceAvg'), paceBest: val('fPaceBest'),
+    hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'), note: val('fNote')
+  };
+  STATE.logs.push(entry);
+  if(role && role!=='restday' && role!=='recovery'){
+    const bucket = eraName==='taper' ? STATE.taperCounts : STATE.counts;
+    bucket[role] = (bucket[role]||0) + 1;
+  }
+  if(role==='recovery'){ STATE.pendingRecovery = false; }
+  if(extra.pain){ STATE.pendingRecovery = true; }
+  saveState();
+  const tag = document.getElementById('savedTag');
+  if(tag){ tag.style.display='block'; setTimeout(()=>tag.style.display='none',1600); }
+  renderAll();
+}
+
+document.getElementById('editDayBtn').onclick = ()=>{
+  pickerOpen = !pickerOpen;
+  document.getElementById('dayPicker').classList.toggle('open', pickerOpen);
+  if(pickerOpen) renderDayTypePicker();
+};
+
+/* ========================= RENDER: UPCOMING (chronological) ========================= */
+function renderUpcoming(){
+  const el = document.getElementById('upcomingList');
+  const rows = [];
+  // simulate forward from today using a local copy of counts so "ครั้งที่ N" previews are accurate
+  const simCounts = {main: {...STATE.counts}, taper: {...STATE.taperCounts}};
+  const simOverride = {...STATE.dayOverride};
+  let simPendingRecovery = STATE.pendingRecovery;
+
+  for(let i=0;i<8;i++){
+    const d = new Date(today.getTime() + i*86400000);
+    const ds = dateStr(d);
+    let r;
+    if(simOverride[ds]){
+      const e = era(d)==='raceweek' ? 'main' : era(d);
+      r = {era:e, role:simOverride[ds]};
+    } else if(i===0 && simPendingRecovery){
+      const e = era(d)==='raceweek' ? 'main' : era(d);
+      r = {era:e, role:'recovery'};
+    } else {
+      r = cycleRole(d);
+    }
+    let label, n=null;
+    if(r.era==='raceweek'){
+      const item = RACEWEEK_SEQ[r.raceweekIdx];
+      label = item.name;
+    } else if(isRestRole(r.role)){
+      label = 'วันพัก';
+    } else {
+      const meta = ROLE_META[r.role]||{name:r.role};
+      label = meta.name;
+      if(r.role!=='recovery'){
+        const bucket = r.era==='taper' ? simCounts.taper : simCounts.main;
+        n = (bucket[r.role]||0) + 1;
+        bucket[r.role] = n; // advance simulation assuming completion
+      }
+    }
+    const dLabel = i===0 ? 'วันนี้' : (i===1 ? 'พรุ่งนี้' : d.toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short'}));
+    rows.push({dLabel, label:`(${slotLabel(d)}) ${label}`, n});
+    if(i===0) simPendingRecovery = false; // only day0 can be the forced-recovery day in this simple preview
+  }
+
+  el.innerHTML = rows.map((r,i)=>`
+    <div class="uprow ${i===0?'today':''}">
+      <div><div class="d">${r.dLabel}</div><div class="role">${r.label}</div></div>
+      ${r.n?`<div class="n">ครั้งที่ ${r.n}</div>`:''}
+    </div>
+  `).join('') + `<div style="font-size:11px;color:var(--muted);margin-top:4px;">*เลขครั้งเป็นการประมาณ สมมติว่าทำครบทุกเซสชันตามลำดับ</div>`;
+}
+
+/* ========================= RENDER: CALENDAR (real month, bound to dates) ========================= */
+const ROLE_COLOR = {
+  easy:'#4CD964', easyRecovery:'#4CD964', easyTaper:'#4CD964', easyShort:'#4CD964',
+  speed:'#FF3B30',
+  weight:'#B98CFF', weightNight:'#B98CFF', weightLight:'#B98CFF',
+  long:'#59A6FF',
+  recovery:'#FF9142',
+  racePace:'#FF9142', restMobility:'#8A8A8A', temposhort:'#FF9142',
+};
+const ROLE_ABBR = {
+  easy:'EZ', easyRecovery:'EZ', easyTaper:'EZ', easyShort:'EZ',
+  speed:'SPD', weight:'WT', weightNight:'WT', weightLight:'WT',
+  long:'LR', recovery:'REC', racePace:'RP', restMobility:'RM', temposhort:'TP',
+};
+const LEGEND_ITEMS = [
+  ['easy','Easy Run'], ['speed','Speed Session'], ['weight','Weight Training'],
+  ['long','Long Run'], ['recovery','Active Recovery'],
+];
+
+function findLogForDate(ds){
+  // prefer a real (non-historical) logged entry; fall back to historical import if that's all there is
+  const matches = STATE.logs.filter(l=>l.dateStr===ds);
+  if(matches.length===0) return null;
+  const real = matches.find(l=>!l.historical);
+  return real || matches[matches.length-1];
+}
+
+let calSelectedDs = null;
+
+function renderCalendar(){
+  const year = today.getFullYear(), month = today.getMonth();
+  const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  document.getElementById('calMonthTitle').textContent = `${monthNames[month]} ${year+543}`;
+
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const startWeekday = firstDay.getDay(); // 0=Sun
+
+  const grid = document.getElementById('calDayGrid');
+  grid.innerHTML = '';
+  for(let i=0;i<startWeekday;i++){
+    const blank = document.createElement('div');
+    blank.className = 'caldaycell blank';
+    grid.appendChild(blank);
+  }
+  for(let day=1; day<=daysInMonth; day++){
+    const d = new Date(year, month, day);
+    const ds = dateStr(d);
+    const isToday = ds===dateStr(today);
+    const isPast = d < today;
+    const cell = document.createElement('div');
+    cell.className = 'caldaycell ' + (isToday?'today':(isPast?'past':'future'));
+    cell.dataset.ds = ds;
+
+    let inner = `<div class="num">${day}</div>`;
+    if(isToday){
+      const r = resolveToday(today);
+      if(!isRestRole(r.role) && r.era!=='raceweek'){
+        const color = ROLE_COLOR[r.role]||'#8A8A8A';
+        const abbr = ROLE_ABBR[r.role]||'';
+        inner += `<div class="abbr" style="color:#0A0A0A">${abbr}</div><div class="dot" style="background:${color}"></div>`;
+      } else {
+        inner += `<div class="abbr" style="color:#0A0A0A;font-size:8.5px;">${slotLabel(d)}</div>`;
+      }
+    } else if(isPast){
+      const log = findLogForDate(ds);
+      if(log && !isRestRole(log.role) && log.role!=='raceweek'){
+        const color = ROLE_COLOR[log.role]||'#8A8A8A';
+        const abbr = ROLE_ABBR[log.role]||'';
+        inner += `<div class="abbr" style="color:${color}">${abbr}</div><div class="dot" style="background:${color}"></div>`;
+      } else {
+        inner += `<div class="abbr" style="color:var(--muted);font-size:8.5px;">${slotLabel(d)}</div>`;
+      }
+    } else {
+      inner += `<div class="abbr" style="color:var(--muted);font-size:8.5px;">${slotLabel(d)}</div>`;
+    }
+    cell.innerHTML = inner;
+    cell.onclick = ()=>{ calSelectedDs = ds; renderCalendar(); };
+    if(ds===calSelectedDs) cell.classList.add('selected');
+    grid.appendChild(cell);
+  }
+
+  const legend = document.getElementById('calLegend');
+  legend.innerHTML =
+    LEGEND_ITEMS.map(([k,name])=>`<div class="item"><span class="dot" style="background:${ROLE_COLOR[k]}"></span>${name}</div>`).join('') +
+    `<div class="item"><span class="swatch" style="background:var(--yellow)"></span>วันนี้</div>` +
+    `<div class="item"><span class="swatch" style="background:#101010;border:1px solid var(--line)"></span>อดีต</div>` +
+    `<div class="item"><span class="swatch" style="background:var(--card2)"></span>อนาคต</div>`;
+
+  renderCalDetail();
+}
+
+function renderCalDetail(){
+  const el = document.getElementById('calDetail');
+  const ds = calSelectedDs || dateStr(today);
+  const d = new Date(ds);
+  const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+  const isToday = ds===dateStr(today);
+  const isPast = d < today;
+  const label = `(${slotLabel(d)})`;
+
+  if(isToday){
+    const r = resolveToday(today);
+    const roleName = r.era==='raceweek' ? RACEWEEK_SEQ[r.raceweekIdx].name : (isRestRole(r.role)?'วันพัก':(ROLE_META[r.role]?ROLE_META[r.role].name:r.role));
+    el.innerHTML = `<div class="dtitle">${dstr} ${label} · วันนี้</div><div class="drow">แผนวันนี้: ${roleName}</div><div class="drow">ดูรายละเอียดและบันทึกผลได้ที่แท็บ Today</div>`;
+    return;
+  }
+  const log = findLogForDate(ds);
+  if(log){
+    const meta = ROLE_META[log.role]||{name:log.role};
+    const stats = [];
+    if(log.distance) stats.push('ระยะ '+log.distance+' กม.');
+    if(log.time) stats.push('เวลา '+log.time);
+    if(log.paceAvg) stats.push('เพซ '+log.paceAvg);
+    if(log.hrAvg) stats.push('HR '+log.hrAvg);
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>`;
+  } else {
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${isPast?'ไม่มีข้อมูลบันทึกไว้สำหรับวันนี้':'ยังไม่ถึงวันนี้ — ยังไม่มีการวางแผนตายตัว (ระบบเป็นคิว ไม่ผูกวันที่)'}</div>`;
+  }
+}
+
+/* ========================= RENDER: QUEUE (progress by type) ========================= */
+function renderQueue(){
+  const r0 = resolveToday(today);
+  const eraName = r0.era==='raceweek' ? 'main' : r0.era;
+  document.getElementById('queuePhaseLabel').textContent = phaseLabel(eraName);
+  const roles = eraName==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN;
+  const counts = eraName==='taper' ? STATE.taperCounts : STATE.counts;
+  const el = document.getElementById('queueList');
+  el.innerHTML = roles.filter(rk=>!isRestRole(rk)).map(rk=>{
+    const n = (counts[rk]||0);
+    const nextN = n+1;
+    const sess = buildSession(rk, nextN);
+    const meta = ROLE_META[rk];
+    const pct = n<=0 ? 0 : Math.min(100, ((n-1)%8)*12.5 + 12.5);
+    return `<div class="qrow">
+      <div class="top"><b>${meta.name}</b><span>ทำไปแล้ว ${n} ครั้ง</span></div>
+      <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="next">ครั้งถัดไป (#${nextN}): ${sess.distance} · ${sess.pace}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ========================= RENDER: PROGRESS ========================= */
+function parsePaceToSec(s){
+  if(!s) return null;
+  const m = s.match(/(\d+):(\d+)/);
+  if(!m) return null;
+  return parseInt(m[1])*60+parseInt(m[2]);
+}
+function fmtSec(s){
+  if(s==null) return '-';
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+function renderProgress(){
+  const logs = [...STATE.logs].sort((a,b)=>a.ts-b.ts);
+  const speedLogs = logs.filter(l=>l.role==='speed' && !l.excludeFromStats && parsePaceToSec(l.paceBest||l.paceAvg));
+  const longLogs = logs.filter(l=>l.role==='long' && !l.excludeFromStats && l.distance);
+
+  const prGrid = document.getElementById('prGrid');
+  let bestSpeedSec = null;
+  speedLogs.forEach(l=>{
+    const s = parsePaceToSec(l.paceBest||l.paceAvg);
+    if(s && (bestSpeedSec===null || s<bestSpeedSec)) bestSpeedSec=s;
+  });
+  let longestDist = null;
+  longLogs.forEach(l=>{
+    const d = parseFloat(l.distance);
+    if(!isNaN(d) && (longestDist===null || d>longestDist)) longestDist=d;
+  });
+  const baselineTempo = parsePaceToSec(BASELINE.bestTempoPace);
+
+  const cards = [];
+  cards.push(`<div class="pr-box"><div class="k">เพซซ้อมเร็วดีที่สุด</div>
+    <div class="v">${bestSpeedSec?fmtSec(bestSpeedSec)+'/km':'ยังไม่มีข้อมูล'}</div>
+    <div class="base">เทียบ Tempo ดีที่สุดเดิม ${BASELINE.bestTempoPace}/km</div></div>`);
+  cards.push(`<div class="pr-box"><div class="k">วิ่งยาวไกลสุด</div>
+    <div class="v">${longestDist?longestDist+' km':'ยังไม่มีข้อมูล'}</div>
+    <div class="base">สะสมจากการซ้อม Long Run</div></div>`);
+  cards.push(`<div class="pr-box"><div class="k">ซ้อมเร็วสะสม</div>
+    <div class="v">${STATE.counts.speed||0} ครั้ง</div><div class="base">นับตั้งแต่เริ่ม Speed Progression ใหม่</div></div>`);
+  cards.push(`<div class="pr-box"><div class="k">วิ่งยาวสะสม</div>
+    <div class="v">${STATE.counts.long||0} ครั้ง</div><div class="base">ตั้งแต่เริ่มแผน</div></div>`);
+  const histCount = logs.filter(l=>l.historical && !l.excludeFromStats).length;
+  const histKm = logs.filter(l=>l.historical && !l.excludeFromStats).reduce((s,l)=>s+(parseFloat(l.distance)||0),0);
+  cards.push(`<div class="pr-box"><div class="k">ประวัติวิ่งทั้งหมด (2026)</div>
+    <div class="v">${histCount} ครั้ง</div><div class="base">รวม ${histKm.toFixed(1)} กม. ก่อนเริ่มแอป</div></div>`);
+  prGrid.innerHTML = cards.join('');
+
+  const chartArea = document.getElementById('chartArea');
+  chartArea.innerHTML = '';
+  chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true));
+  chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
+}
+function fmtDateShort(ds){
+  if(!ds) return '';
+  const d = new Date(ds);
+  return d.toLocaleDateString('th-TH',{day:'numeric',month:'short'});
+}
+function makeChart(title, values, dates, baseline, lowerIsBetter){
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  const cleanIdx = [];
+  values.forEach((v,i)=>{ if(v!=null && !isNaN(v)) cleanIdx.push(i); });
+  const clean = cleanIdx.map(i=>values[i]);
+  const cleanDates = cleanIdx.map(i=>dates[i]);
+  if(clean.length===0){
+    card.innerHTML = `<div class="title">${title}</div><div class="sub">ยังไม่มีข้อมูลพอสำหรับกราฟ บันทึกผลซ้อมเพิ่มเติมเพื่อดูเทรนด์</div>`;
+    return card;
+  }
+  const w=300,h=100,pad=8;
+  const allVals = baseline? clean.concat([baseline]) : clean;
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const range = (max-min)||1;
+  const pts = clean.map((v,i)=>{
+    const x = pad + (i/(Math.max(clean.length-1,1)))*(w-2*pad);
+    const y = h-pad - ((v-min)/range)*(h-2*pad);
+    return [x,y];
+  });
+  const linePath = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(1)},${h-pad} L${pts[0][0].toFixed(1)},${h-pad} Z`;
+  let baseLine = '';
+  if(baseline!=null){
+    const by = h-pad - ((baseline-min)/range)*(h-2*pad);
+    baseLine = `<line x1="${pad}" y1="${by.toFixed(1)}" x2="${w-pad}" y2="${by.toFixed(1)}" stroke="#8A8A8A" stroke-dasharray="4,4" stroke-width="1.5"/>`;
+  }
+  const latest = clean[clean.length-1];
+  const latestLabel = lowerIsBetter ? fmtSec(latest)+'/km' : latest;
+
+  // x-axis date labels at 0%, 30%, 60% of the axis (dedupe when few data points)
+  const markPcts = [0, 0.3, 0.6];
+  let markIdxs = markPcts.map(p=>Math.round(p*(clean.length-1)));
+  markIdxs = [...new Set(markIdxs)];
+  const xLabels = markIdxs.map(i=>({pct: (clean.length>1 ? i/(clean.length-1) : 0)*100, text: fmtDateShort(cleanDates[i])}));
+  const labelsHtml = xLabels.map(m=>`<span style="position:absolute;left:${m.pct}%;transform:translateX(${m.pct===0?'0':'-50%'});">${m.text}</span>`).join('');
+
+  card.innerHTML = `
+    <div class="title">${title}</div>
+    <div class="num">${latestLabel}</div>
+    <svg viewBox="0 0 ${w} ${h}">
+      ${baseLine}
+      <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
+      <path d="${linePath}" fill="none" stroke="#F5D800" stroke-width="2.5"/>
+    </svg>
+    <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
+    <div class="legend"><span><span class="dot" style="background:#F5D800"></span>ค่าจริง</span>${baseline!=null?'<span><span class="dot" style="background:#8A8A8A"></span>ค่าเริ่มต้น</span>':''}</div>
+  `;
+  return card;
+}
+
+/* ========================= RENDER: HISTORY (edit/delete) ========================= */
+function renderHistory(){
+  const el = document.getElementById('historyList');
+  const logs = [...STATE.logs].sort((a,b)=>b.ts-a.ts);
+  if(logs.length===0){ el.innerHTML = '<div class="empty">ยังไม่มีประวัติการซ้อม</div>'; }
+  else{
+    el.innerHTML = logs.map(l=>{
+      const meta = ROLE_META[l.role] || {name:l.role};
+      const d = new Date(l.dateStr);
+      const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'});
+      const stats = [];
+      if(l.distance) stats.push('ระยะ '+l.distance);
+      if(l.time) stats.push('เวลา '+l.time);
+      if(l.paceAvg) stats.push('เพซ '+l.paceAvg);
+      if(l.hrAvg) stats.push('HR '+l.hrAvg);
+      if(l.partial) stats.push('ทำไม่ครบ');
+      return `<div class="hrow" data-ts="${l.ts}">
+        <div class="top"><span>${meta.name} ${l.occurrence?('#'+l.occurrence):''} ${l.excludeFromStats?'<span class="seedflag">(ไม่นับสถิติ)</span>':(l.historical?'<span class="seedflag">(ประวัติก่อนเริ่มแอป)</span>':'')}</span><span class="date">${dstr}</span></div>
+        <div class="stats">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'} ${l.pain?'<span class="painflag"> · มีอาการเจ็บ</span>':''}</div>
+        <div class="hactions">
+          <button class="btn btn-ghost btn-small" data-act="edit" data-ts="${l.ts}">แก้ไข</button>
+          <button class="btn btn-danger btn-small" data-act="delete" data-ts="${l.ts}">ลบ</button>
+        </div>
+        <div class="editform" id="editform-${l.ts}">
+          <div class="field-grid">
+            <div class="field"><label>ระยะทาง</label><input type="text" id="e-distance-${l.ts}" value="${l.distance||''}"></div>
+            <div class="field"><label>เวลารวม</label><input type="text" id="e-time-${l.ts}" value="${l.time||''}"></div>
+            <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="e-paceAvg-${l.ts}" value="${l.paceAvg||''}"></div>
+            <div class="field"><label>เพซดีที่สุด</label><input type="text" id="e-paceBest-${l.ts}" value="${l.paceBest||''}"></div>
+            <div class="field"><label>HR เฉลี่ย</label><input type="text" id="e-hrAvg-${l.ts}" value="${l.hrAvg||''}"></div>
+            <div class="field"><label>HR สูงสุด</label><input type="text" id="e-hrMax-${l.ts}" value="${l.hrMax||''}"></div>
+          </div>
+          <div class="field"><label>โน้ต</label><textarea id="e-note-${l.ts}" rows="2">${l.note||''}</textarea></div>
+          <div class="actions"><button class="btn btn-ghost btn-small" data-act="cancelEdit" data-ts="${l.ts}">ยกเลิก</button>
+          <button class="btn btn-yes btn-small" data-act="saveEdit" data-ts="${l.ts}">บันทึกการแก้ไข</button></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  el.querySelectorAll('button[data-act]').forEach(btn=>{
+    const ts = Number(btn.dataset.ts);
+    if(btn.dataset.act==='edit'){
+      btn.onclick = ()=> document.getElementById('editform-'+ts).classList.add('open');
+    }
+    if(btn.dataset.act==='cancelEdit'){
+      btn.onclick = ()=> document.getElementById('editform-'+ts).classList.remove('open');
+    }
+    if(btn.dataset.act==='saveEdit'){
+      btn.onclick = ()=>{
+        const entry = STATE.logs.find(l=>l.ts===ts);
+        if(!entry) return;
+        const g = id=>{ const e=document.getElementById(id); return e?e.value:''; };
+        entry.distance = g('e-distance-'+ts); entry.time = g('e-time-'+ts);
+        entry.paceAvg = g('e-paceAvg-'+ts); entry.paceBest = g('e-paceBest-'+ts);
+        entry.hrAvg = g('e-hrAvg-'+ts); entry.hrMax = g('e-hrMax-'+ts);
+        entry.note = g('e-note-'+ts);
+        saveState();
+        renderHistory();
+      };
+    }
+    if(btn.dataset.act==='delete'){
+      btn.onclick = ()=>{
+        const entry = STATE.logs.find(l=>l.ts===ts);
+        if(!entry) return;
+        showConfirm('ยืนยันการลบ', `ต้องการลบประวัติ <b>${(ROLE_META[entry.role]||{name:entry.role}).name}</b> วันที่ ${entry.dateStr} ใช่ไหม? การลบจะปรับจำนวนครั้งสะสมของประเภทนี้ลง 1 ครั้งด้วย`, ()=>{
+          STATE.logs = STATE.logs.filter(l=>l.ts!==ts);
+          if(!entry.historical && entry.role && entry.role!=='restday' && entry.role!=='recovery'){
+            const bucket = entry.era==='taper' ? STATE.taperCounts : STATE.counts;
+            bucket[entry.role] = Math.max(0, (bucket[entry.role]||0) - 1);
+          }
+          saveState();
+          renderHistory();
+          renderQueue();
+        });
+      };
+    }
+  });
+
+  document.getElementById('backupText').value = JSON.stringify(STATE);
+}
+
+document.getElementById('copyBackupBtn').onclick = ()=>{
+  const ta = document.getElementById('backupText');
+  ta.select(); ta.setSelectionRange(0,999999);
+  try{ document.execCommand('copy'); }catch(e){}
+  alert('คัดลอกแล้ว (ถ้าเบราว์เซอร์ไม่รองรับ ให้กดค้างเลือกข้อความเองแล้ว copy)');
+};
+document.getElementById('restoreBackupBtn').onclick = ()=>{
+  const raw = document.getElementById('backupText').value;
+  showConfirm('ยืนยันการกู้คืน', 'ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่ด้วยข้อมูลในกล่องข้อความนี้ ต้องการดำเนินการต่อไหม?', ()=>{
+    try{
+      const parsed = JSON.parse(raw);
+      STATE = Object.assign({counts:{},taperCounts:{},dayOverride:{},pendingRecovery:false,logs:[]}, parsed);
+      ensureCounts(STATE.counts, CYCLE_MAIN);
+      ensureCounts(STATE.taperCounts, CYCLE_TAPER);
+      saveState();
+      renderAll(); renderQueue(); renderHistory();
+      alert('กู้คืนข้อมูลสำเร็จ');
+    }catch(e){ alert('ข้อมูลไม่ถูกต้อง: '+e.message); }
+  });
+};
+
+/* ========================= TABS + INIT ========================= */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    if(t.dataset.tab==='progress') renderProgress();
+    if(t.dataset.tab==='history') renderHistory();
+    if(t.dataset.tab==='queue'){ renderUpcoming(); renderQueue(); }
+    if(t.dataset.tab==='calendar') renderCalendar();
+  };
+});
+
+function renderAll(){ renderCtx(); renderToday(); }
+
+(function init(){
+  loadState();
+  renderAll();
+})();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./service-worker.js').catch(e=>console.warn('SW register failed', e));
+  });
+}
+</script>
+</body>
+</html>
