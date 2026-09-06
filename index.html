@@ -1242,6 +1242,7 @@ function renderProgress(){
   const chartArea = document.getElementById('chartArea');
   chartArea.innerHTML = '';
   chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true, speedLogs.map(l=>l.pain?(l.note||'มีอาการเจ็บ'):null)));
+  chartArea.appendChild(makeEfficiencyCard());
   chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
 }
 function fmtDateShort(ds){
@@ -1338,6 +1339,129 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
     tipEl.style.top = py+'px';
     const painSuffix = cleanPain[nearest] ? ` · 🩹 ${cleanPain[nearest]}` : '';
     tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}${painSuffix}`;
+    tipEl.style.display = 'block';
+    guideEl.setAttribute('x1', p[0]); guideEl.setAttribute('x2', p[0]);
+    guideEl.style.display = 'block';
+  }
+  function hideTip(){
+    tipEl.style.display = 'none';
+    guideEl.style.display = 'none';
+  }
+  svgEl.addEventListener('pointerdown', (e)=>{ showTip(e.clientX); });
+  svgEl.addEventListener('pointermove', (e)=>{ if(e.pointerType==='mouse') showTip(e.clientX); });
+  svgEl.addEventListener('pointerleave', (e)=>{ if(e.pointerType==='mouse') hideTip(); });
+
+  return card;
+}
+
+/* ========================= EFFICIENCY TREND (Performance #1: pace-at-matched-HR) ========================= */
+const AEROBIC_HR_MIN = 140, AEROBIC_HR_MAX = 160;
+let efficiencyRole = 'easy';
+
+function makeEfficiencyCard(){
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  const roleName = efficiencyRole==='easy' ? 'Easy Run' : 'Long Run';
+  const toggleHtml = `
+    <div class="chip-row" style="margin:6px 0 8px;">
+      <div class="chip eff-toggle ${efficiencyRole==='easy'?'sel':''}" data-role="easy">Easy Run</div>
+      <div class="chip eff-toggle ${efficiencyRole==='long'?'sel':''}" data-role="long">Long Run</div>
+    </div>`;
+
+  const roleLogs = STATE.logs.filter(l=>l.role===efficiencyRole && !l.excludeFromStats && (l.paceAvg||l.paceBest));
+  const missingHrCount = roleLogs.filter(l=>!parseFloat(l.hrAvg)).length;
+  const inBand = roleLogs.filter(l=>{
+    const hr = parseFloat(l.hrAvg);
+    return !isNaN(hr) && hr>=AEROBIC_HR_MIN && hr<=AEROBIC_HR_MAX;
+  }).sort((a,b)=>a.ts-b.ts);
+
+  const wireToggle = ()=>{
+    card.querySelectorAll('.eff-toggle').forEach(c=>{
+      c.onclick = ()=>{ efficiencyRole = c.dataset.role; renderProgress(); };
+    });
+  };
+
+  if(inBand.length < 3){
+    card.innerHTML = `
+      <div class="title">ประสิทธิภาพการวิ่ง (เพซที่ HR เท่ากัน)</div>
+      ${toggleHtml}
+      <div class="sub">ต้องมีอย่างน้อย 3 เซสชัน${roleName}ที่ HR เฉลี่ยอยู่ในช่วง ${AEROBIC_HR_MIN}-${AEROBIC_HR_MAX} bpm ถึงจะเห็นเทรนด์นี้ได้ — ตอนนี้มี ${inBand.length} เซสชัน${missingHrCount>0?` (ไม่รวม ${missingHrCount} เซสชันที่ไม่มีข้อมูล HR)`:''}</div>
+    `;
+    wireToggle();
+    return card;
+  }
+
+  const values = inBand.map(l=>parsePaceToSec(l.paceAvg||l.paceBest));
+  const w=300, h=100, pad=8;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max-min)||1;
+  const pts = values.map((v,i)=>{
+    const x = pad + (i/(Math.max(values.length-1,1)))*(w-2*pad);
+    const y = h-pad - ((v-min)/range)*(h-2*pad);
+    return [x,y];
+  });
+  const linePath = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(1)},${h-pad} L${pts[0][0].toFixed(1)},${h-pad} Z`;
+
+  const yLevels = [max, (max+min)/2, min].map(v=>{ const gy = h-pad - ((v-min)/range)*(h-2*pad); return {v, gy}; });
+  const gridLinesSvg = yLevels.map(g=>`<line x1="${pad}" y1="${g.gy.toFixed(1)}" x2="${w-pad}" y2="${g.gy.toFixed(1)}" stroke="#2A2A2A" stroke-width="1"/>`).join('');
+  const yLabelsHtml = yLevels.map(g=>`<span style="position:absolute;left:2px;top:${((g.gy/h)*100).toFixed(1)}%;transform:translateY(-50%);">${fmtSec(g.v)}/km</span>`).join('');
+
+  const markPcts = [0, 0.3, 0.6];
+  let markIdxs = markPcts.map(p=>Math.round(p*(values.length-1)));
+  markIdxs = [...new Set(markIdxs)];
+  const labelsHtml = markIdxs.map(i=>{
+    const pct = (values.length>1 ? i/(values.length-1) : 0)*100;
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(inBand[i].dateStr)}</span>`;
+  }).join('');
+
+  const pointCircles = pts.map((p,i)=>{
+    const isPartial = !!inBand[i].partial;
+    return isPartial
+      ? `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="none" stroke="#F5D800" stroke-width="1.5"/>`
+      : `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#F5D800"/>`;
+  }).join('');
+
+  const latest = values[values.length-1];
+
+  card.innerHTML = `
+    <div class="title">ประสิทธิภาพการวิ่ง (เพซที่ HR เท่ากัน)</div>
+    ${toggleHtml}
+    <div class="num">${fmtSec(latest)}/km</div>
+    <div class="sub">เฉพาะเซสชันที่ HR เฉลี่ยอยู่ในช่วง ${AEROBIC_HR_MIN}-${AEROBIC_HR_MAX} bpm${missingHrCount>0?` (ไม่รวม ${missingHrCount} เซสชันที่ไม่มีข้อมูล HR)`:''}</div>
+    <div class="chart-plot">
+      <div class="y-labels">${yLabelsHtml}</div>
+      <svg class="chart-svg" viewBox="0 0 ${w} ${h}">
+        ${gridLinesSvg}
+        <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
+        <path d="${linePath}" fill="none" stroke="#F5D800" stroke-width="2.5"/>
+        ${pointCircles}
+        <line class="guide" x1="0" y1="${pad}" x2="0" y2="${h-pad}" stroke="#F5D800" stroke-width="1" stroke-dasharray="2,2"/>
+      </svg>
+      <div class="chart-tip"></div>
+    </div>
+    <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
+    <div class="legend"><span><span class="dot" style="background:#F5D800"></span>ค่าจริง</span><span>วงกลมโปร่ง = ทำไม่ครบเซสชัน</span></div>
+  `;
+
+  wireToggle();
+
+  const svgEl = card.querySelector('.chart-svg');
+  const tipEl = card.querySelector('.chart-tip');
+  const guideEl = card.querySelector('.guide');
+
+  function showTip(clientX){
+    const rect = svgEl.getBoundingClientRect();
+    const vbX = (clientX - rect.left) * (w/rect.width);
+    let nearest = 0, best = Infinity;
+    pts.forEach((p,i)=>{ const d = Math.abs(p[0]-vbX); if(d<best){ best=d; nearest=i; } });
+    const p = pts[nearest];
+    const px = p[0]*(rect.width/w);
+    const py = p[1]*(rect.height/h);
+    tipEl.style.left = px+'px';
+    tipEl.style.top = py+'px';
+    const l = inBand[nearest];
+    tipEl.textContent = `${fmtDateShort(l.dateStr)} · ${fmtSec(values[nearest])}/km · HR ${l.hrAvg}`;
     tipEl.style.display = 'block';
     guideEl.setAttribute('x1', p[0]); guideEl.setAttribute('x2', p[0]);
     guideEl.style.display = 'block';
