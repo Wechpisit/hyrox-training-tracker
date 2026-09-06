@@ -51,6 +51,11 @@
   .chip.sel{background:var(--yellow);color:#0A0A0A;border-color:var(--yellow);}
 
   .hero{background:var(--card);border-radius:20px;padding:20px 18px;border-left:5px solid var(--yellow);margin-bottom:16px;}
+  .precheck-card{background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:12px;border-left:4px solid var(--yellow);}
+  .pc-title{font-size:13px;font-weight:700;margin-bottom:10px;color:var(--muted);}
+  .pc-q{margin-bottom:10px;}
+  .pc-q:last-child{margin-bottom:0;}
+  .pc-q span{display:block;font-size:13.5px;margin-bottom:6px;}
   .hero .eyebrow{font-size:12.5px;color:var(--muted);}
   .hero h1{font-size:24px;font-weight:800;margin:4px 0 10px;line-height:1.15;}
   .plain-tip{background:var(--card2);border-radius:12px;padding:10px 12px;font-size:13.5px;
@@ -225,6 +230,7 @@
     </div>
     <div class="picker" id="dayPicker"></div>
 
+    <div id="preCheck" style="display:none;"></div>
     <div class="hero" id="hero"></div>
 
     <div class="save-tag" id="savedTag">บันทึกแล้ว ✓</div>
@@ -466,6 +472,11 @@ const OVERRIDE_OPTIONS_MAIN = ['easy','speed','weight','long','restday'];
 const OVERRIDE_OPTIONS_TAPER = ['easyTaper','racePace','restMobility','temposhort','restday'];
 
 let pickerOpen = false;
+
+/* Pre-session safety check (Speed Session days) — transient, not persisted; resets on page reload */
+let preCheckAnswers = { shinOk: null, sleepOk: null };
+let preCheckProceedAnyway = false;
+
 function renderDayTypePicker(){
   const r = resolveToday(today);
   const opts = r.era==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN;
@@ -507,6 +518,44 @@ function renderToday(){
     + (r.overridden ? ' (แก้ไขเอง)' : '') + (r.forcedRecovery ? ' (แนะนำพักฟื้น)' : '');
 
   const hero = document.getElementById('hero');
+  const preCheckEl = document.getElementById('preCheck');
+  const isSpeedToday = (r.role === 'speed');
+  const alreadyLoggedSpeedToday = isSpeedToday && STATE.logs.some(l=>l.dateStr===dateStr(today) && l.role==='speed');
+  const showPreCheck = isSpeedToday && !alreadyLoggedSpeedToday;
+
+  if(!showPreCheck){
+    preCheckEl.style.display = 'none';
+    preCheckEl.innerHTML = '';
+  } else {
+    preCheckEl.style.display = 'block';
+    preCheckEl.innerHTML = `
+      <div class="precheck-card">
+        <div class="pc-title">เช็กความพร้อมก่อนซ้อมเร็ว</div>
+        <div class="pc-q">
+          <span>หน้าแข้งไม่มีอาการเจ็บใช่ไหม?</span>
+          <div class="chip-row">
+            <div class="chip ${preCheckAnswers.shinOk===true?'sel':''}" data-q="shin" data-val="yes">ใช่</div>
+            <div class="chip ${preCheckAnswers.shinOk===false?'sel':''}" data-q="shin" data-val="no">ไม่ใช่</div>
+          </div>
+        </div>
+        <div class="pc-q">
+          <span>คืนที่ผ่านมานอนพอสมควรใช่ไหม?</span>
+          <div class="chip-row">
+            <div class="chip ${preCheckAnswers.sleepOk===true?'sel':''}" data-q="sleep" data-val="yes">ใช่</div>
+            <div class="chip ${preCheckAnswers.sleepOk===false?'sel':''}" data-q="sleep" data-val="no">ไม่ใช่</div>
+          </div>
+        </div>
+      </div>
+    `;
+    preCheckEl.querySelectorAll('.chip').forEach(c=>{
+      c.onclick = ()=>{
+        const isYes = c.dataset.val==='yes';
+        if(c.dataset.q==='shin') preCheckAnswers.shinOk = isYes; else preCheckAnswers.sleepOk = isYes;
+        preCheckProceedAnyway = false;
+        renderToday();
+      };
+    });
+  }
 
   if(r.era==='raceweek'){
     const item = RACEWEEK_SEQ[r.raceweekIdx];
@@ -538,6 +587,34 @@ function renderToday(){
   const sess = buildSession(role, n);
   const meta = ROLE_META[role] || {name:role};
   const weightDay = isWeightRole(role);
+
+  const needsPreCheckRedirect = showPreCheck && !preCheckProceedAnyway &&
+    (preCheckAnswers.shinOk===false || preCheckAnswers.sleepOk===false);
+
+  if(needsPreCheckRedirect){
+    hero.style.borderLeftColor = 'var(--red)';
+    hero.innerHTML = `
+      <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
+      <h1>ทบทวนก่อนซ้อมเร็ว</h1>
+      <div class="plain-tip">แนะนำให้ทำ Easy Run แทนวันนี้ หรือถ้ายืนยันจะทำ Speed Session ต่อ ให้กดยืนยันอีกครั้ง</div>
+      <div class="actions">
+        <button class="btn btn-yes" id="switchEasyBtn">เปลี่ยนเป็น Easy Run วันนี้</button>
+        <button class="btn btn-ghost" id="proceedAnywayBtn">ยืนยันทำ Speed Session ต่อ</button>
+      </div>
+    `;
+    document.getElementById('switchEasyBtn').onclick = ()=>{
+      STATE.dayOverride[dateStr(today)] = 'easy';
+      saveState();
+      preCheckAnswers = {shinOk:null, sleepOk:null};
+      preCheckProceedAnyway = false;
+      renderAll();
+    };
+    document.getElementById('proceedAnywayBtn').onclick = ()=>{
+      preCheckProceedAnyway = true;
+      renderToday();
+    };
+    return;
+  }
 
   const detailFieldsHtml = weightDay ? `
       <div class="field">
@@ -613,7 +690,11 @@ function renderToday(){
     });
   }
 
-  bindActions(role, r.era, n, ()=>({rpe:rpeVal, pain:painOn, workoutType:workoutTypeVal}));
+  bindActions(role, r.era, n, ()=>({
+    rpe:rpeVal, pain:painOn, workoutType:workoutTypeVal,
+    preCheckShinOk: isSpeedToday ? preCheckAnswers.shinOk : null,
+    preCheckSleepOk: isSpeedToday ? preCheckAnswers.sleepOk : null,
+  }));
 }
 
 function bindActions(role, eraName, n, extraGetter){
@@ -647,7 +728,9 @@ function doSave(role, eraName, n, partial, extra){
     done: true, partial: !!partial, pain: !!extra.pain, rpe: extra.rpe,
     distance: val('fDistance'), time: val('fTime'), paceAvg: val('fPaceAvg'), paceBest: val('fPaceBest'),
     hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'),
-    workoutType: extra.workoutType||'', note: val('fNote')
+    workoutType: extra.workoutType||'', note: val('fNote'),
+    preCheckShinOk: extra.preCheckShinOk===undefined ? null : extra.preCheckShinOk,
+    preCheckSleepOk: extra.preCheckSleepOk===undefined ? null : extra.preCheckSleepOk
   };
   STATE.logs.push(entry);
   if(role && role!=='restday' && role!=='recovery'){
@@ -656,6 +739,7 @@ function doSave(role, eraName, n, partial, extra){
   }
   if(role==='recovery'){ STATE.pendingRecovery = false; }
   if(extra.pain){ STATE.pendingRecovery = true; }
+  if(role==='speed'){ preCheckAnswers = {shinOk:null, sleepOk:null}; preCheckProceedAnyway = false; }
   saveState();
   const tag = document.getElementById('savedTag');
   if(tag){ tag.style.display='block'; setTimeout(()=>tag.style.display='none',1600); }
