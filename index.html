@@ -254,6 +254,8 @@
   <div class="panel" id="panel-progress">
     <div class="section-title">สถิติส่วนตัว (จากจุดเริ่มต้น)</div>
     <div class="pr-grid" id="prGrid"></div>
+    <div class="section-title">โหลดการซ้อม (ความปลอดภัย)</div>
+    <div id="weeklyLoadArea"></div>
     <div class="section-title">เทรนด์ตามเวลา</div>
     <div id="chartArea"></div>
   </div>
@@ -408,6 +410,7 @@ function loadState(){
   }catch(e){ console.warn('load failed', e); }
   ensureCounts(STATE.counts, CYCLE_MAIN);
   ensureCounts(STATE.taperCounts, CYCLE_TAPER);
+  migrateDateStrBug();
   saveState();
 }
 function saveState(){
@@ -415,7 +418,29 @@ function saveState(){
   catch(e){ alert('บันทึกไม่สำเร็จ: ' + e.message); }
 }
 /* ========================= DATE / ROLE LOGIC ========================= */
-function dateStr(d){ return d.toISOString().slice(0,10); }
+function dateStr(d){
+  return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+}
+/** One-time migration (2026-09-06): dateStr() used to build its string via d.toISOString(),
+ * which converts to UTC — for any positive-UTC-offset timezone (e.g. Thailand, UTC+7) that
+ * rolls a local-midnight Date back to the previous calendar day. Every non-historical log's
+ * dateStr and every dayOverride key saved before this fix is off by one day early. Shifts them
+ * forward once, using literal string parsing (not the old buggy function) so it's correct
+ * regardless of which dateStr() version wrote them. */
+function migrateDateStrBug(){
+  if(STATE.dateStrBugMigrated) return;
+  const shiftForward = (ds)=>{
+    const [y,mo,da] = ds.split('-').map(Number);
+    return dateStr(new Date(y, mo-1, da+1));
+  };
+  STATE.logs.forEach(l=>{
+    if(!l.historical && l.dateStr) l.dateStr = shiftForward(l.dateStr);
+  });
+  const shiftedOverride = {};
+  Object.keys(STATE.dayOverride||{}).forEach(k=>{ shiftedOverride[shiftForward(k)] = STATE.dayOverride[k]; });
+  STATE.dayOverride = shiftedOverride;
+  STATE.dateStrBugMigrated = true;
+}
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
 function era(d){
   if(d >= RACEWEEK_START) return 'raceweek';
@@ -957,7 +982,147 @@ function fmtSec(s){
   const m = Math.floor(s/60), sec = Math.round(s%60);
   return `${m}:${sec.toString().padStart(2,'0')}`;
 }
+
+/* ========================= WEEKLY TRAINING LOAD (shared calc — also used by Calendar C4) ========================= */
+function mondayOf(d){
+  const day = d.getDay();
+  const diff = (day===0) ? -6 : (1-day);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff);
+}
+function parseTimeToMin(t){
+  if(!t) return 0;
+  const parts = String(t).split(':').map(Number);
+  if(parts.some(isNaN)) return 0;
+  if(parts.length===3){ const [h,m,s]=parts; return h*60+m+s/60; }
+  if(parts.length===2){ const [m,s]=parts; return m+s/60; }
+  return 0;
+}
+function weekLabel(weekStart){
+  const end = new Date(weekStart.getTime()+6*86400000);
+  const mo = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const sD = weekStart.getDate(), sM = mo[weekStart.getMonth()];
+  const eD = end.getDate(), eM = mo[end.getMonth()];
+  return sM===eM ? `${sD}-${eD} ${eM}` : `${sD} ${sM}-${eD} ${eM}`;
+}
+/** Returns the last `numWeeks` calendar weeks (Mon-Sun) ending with the current week, each
+ * { weekStart, km, min, sessions[], pctChange }. pctChange compares km against the immediately
+ * preceding week (fetched internally for context even when not displayed), or null if that
+ * preceding week had zero km (first-ever week, or a genuine zero week — no meaningful % to show). */
+function computeWeeklyTotals(numWeeks){
+  const logs = STATE.logs.filter(l=>!l.excludeFromStats);
+  const thisMonday = mondayOf(today);
+  const weeks = [];
+  for(let i=numWeeks; i>=0; i--){
+    const ws = new Date(thisMonday.getTime() - i*7*86400000);
+    weeks.push({ weekStart: ws, weekStartStr: dateStr(ws), km:0, min:0, sessions:[] });
+  }
+  const byKey = {};
+  weeks.forEach(w=>{ byKey[w.weekStartStr] = w; });
+  logs.forEach(l=>{
+    const wkKey = dateStr(mondayOf(new Date(l.dateStr)));
+    const bucket = byKey[wkKey];
+    if(!bucket) return;
+    bucket.km += parseFloat(l.distance)||0;
+    bucket.min += parseTimeToMin(l.time);
+    bucket.sessions.push(l);
+  });
+  for(let i=1;i<weeks.length;i++){
+    const prev = weeks[i-1].km;
+    weeks[i].pctChange = prev>0 ? ((weeks[i].km-prev)/prev*100) : null;
+  }
+  return weeks.slice(1);
+}
+
+let weeklyLoadMetric = 'km';
+let weeklyLoadExpandedIdx = null;
+
+function renderWeeklyLoad(){
+  const el = document.getElementById('weeklyLoadArea');
+  const NUM_WEEKS = 8;
+  const weeks = computeWeeklyTotals(NUM_WEEKS);
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+
+  const metricLabel = weeklyLoadMetric==='km' ? 'กม.' : 'นาที';
+  const values = weeks.map(w=> weeklyLoadMetric==='km' ? w.km : w.min);
+  const maxVal = Math.max(...values, 1);
+
+  const w=300, h=100, pad=8;
+  const slot = (w-2*pad)/weeks.length;
+  const barGap = 4;
+  const barWidth = Math.max(slot-barGap, 2);
+  const bars = weeks.map((wk,i)=>{
+    const val = values[i];
+    const barH = Math.max((val/maxVal)*(h-2*pad), val>0?2:0);
+    const x = pad + i*slot + barGap/2;
+    const y = h-pad-barH;
+    const isWarn = wk.pctChange!=null && wk.pctChange>10;
+    const color = isWarn ? '#FF3B30' : '#F5D800';
+    const warnMark = isWarn ? `<text x="${(x+barWidth/2).toFixed(1)}" y="${Math.max(y-3,8).toFixed(1)}" font-size="8" fill="#FF3B30" text-anchor="middle">⚠</text>` : '';
+    return `<rect data-i="${i}" class="wl-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${color}" style="cursor:pointer;"/>${warnMark}`;
+  }).join('');
+
+  const xLabelsHtml = weeks.map((wk,i)=>{
+    const pct = ((i+0.5)/weeks.length)*100;
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(-50%);">${weekLabel(wk.weekStart)}</span>`;
+  }).join('');
+
+  const lastWeek = weeks[weeks.length-1];
+  const lastVal = weeklyLoadMetric==='km' ? lastWeek.km : lastWeek.min;
+  let summaryHtml;
+  if(lastWeek.pctChange==null){
+    summaryHtml = `สัปดาห์นี้: ${lastVal.toFixed(1)} ${metricLabel}`;
+  } else {
+    const sign = lastWeek.pctChange>=0 ? '+' : '';
+    const warn = lastWeek.pctChange>10;
+    summaryHtml = `สัปดาห์นี้: ${lastVal.toFixed(1)} ${metricLabel} (${sign}${lastWeek.pctChange.toFixed(0)}% จากสัปดาห์ก่อน) ${warn?'⚠️ เพิ่มเร็วเกินไป':'✅'}`;
+  }
+
+  card.innerHTML = `
+    <div class="title">โหลดการซ้อมรายสัปดาห์</div>
+    <div class="chip-row" style="margin:6px 0 8px;">
+      <div class="chip wl-metric ${weeklyLoadMetric==='km'?'sel':''}" data-metric="km">กม.</div>
+      <div class="chip wl-metric ${weeklyLoadMetric==='min'?'sel':''}" data-metric="min">นาที</div>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:120px;display:block;">${bars}</svg>
+    <div style="position:relative;height:14px;font-size:9.5px;color:var(--muted);margin-top:2px;">${xLabelsHtml}</div>
+    <div class="sub" style="margin-top:8px;">${summaryHtml}</div>
+    <div id="weeklyLoadDetail"></div>
+  `;
+
+  card.querySelectorAll('.wl-metric').forEach(c=>{
+    c.onclick = ()=>{ weeklyLoadMetric = c.dataset.metric; renderWeeklyLoad(); };
+  });
+  card.querySelectorAll('.wl-bar').forEach(bar=>{
+    bar.addEventListener('click', ()=>{
+      const i = Number(bar.dataset.i);
+      weeklyLoadExpandedIdx = (weeklyLoadExpandedIdx===i) ? null : i;
+      renderWeeklyBreakdown(weeks);
+    });
+  });
+
+  el.innerHTML = '';
+  el.appendChild(card);
+  renderWeeklyBreakdown(weeks);
+}
+
+function renderWeeklyBreakdown(weeks){
+  const detailEl = document.getElementById('weeklyLoadDetail');
+  if(!detailEl) return;
+  if(weeklyLoadExpandedIdx==null){ detailEl.innerHTML=''; return; }
+  const wk = weeks[weeklyLoadExpandedIdx];
+  if(!wk || wk.sessions.length===0){ detailEl.innerHTML = `<div class="empty" style="padding:12px 0;">ไม่มีเซสชันในสัปดาห์นี้</div>`; return; }
+  const rows = [...wk.sessions].sort((a,b)=>a.ts-b.ts).map(l=>{
+    const meta = ROLE_META[l.role]||{name:l.role};
+    const dLbl = fmtDateShort(l.dateStr);
+    const distTxt = l.distance ? `${l.distance} กม.` : '';
+    const timeTxt = l.time ? l.time : '';
+    return `<div class="hrow" style="margin-top:6px;"><div class="top"><span>${meta.name}</span><span class="date">${dLbl}</span></div><div class="stats">${[distTxt,timeTxt].filter(Boolean).join(' · ')||'ไม่มีรายละเอียด'}</div></div>`;
+  }).join('');
+  detailEl.innerHTML = rows;
+}
 function renderProgress(){
+  renderWeeklyLoad();
   const logs = [...STATE.logs].sort((a,b)=>a.ts-b.ts);
   const speedLogs = logs.filter(l=>l.role==='speed' && !l.excludeFromStats && parsePaceToSec(l.paceBest||l.paceAvg));
   const longLogs = logs.filter(l=>l.role==='long' && !l.excludeFromStats && l.distance);
