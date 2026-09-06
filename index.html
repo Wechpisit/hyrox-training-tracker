@@ -136,6 +136,7 @@
   .caldaycell .abbr{font-size:9.5px;font-weight:800;margin-top:1px;}
   .caldaycell .dot{width:6px;height:6px;border-radius:50%;margin-top:2px;}
   .caldaycell.selected{outline:2px solid #fff;}
+  .caldaycell.haspain{box-shadow:inset 0 0 0 2px var(--red);}
 
   .cal-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:var(--muted);margin-bottom:14px;}
   .cal-legend .item{display:flex;align-items:center;gap:5px;}
@@ -853,6 +854,9 @@ function findLogForDate(ds){
   const real = matches.find(l=>!l.historical);
   return real || matches[matches.length-1];
 }
+function hasPainOnDate(ds){
+  return STATE.logs.some(l=>l.dateStr===ds && l.pain===true);
+}
 
 let calSelectedDs = null;
 
@@ -878,7 +882,7 @@ function renderCalendar(){
     const isToday = ds===dateStr(today);
     const isPast = d < today;
     const cell = document.createElement('div');
-    cell.className = 'caldaycell ' + (isToday?'today':(isPast?'past':'future'));
+    cell.className = 'caldaycell ' + (isToday?'today':(isPast?'past':'future')) + (hasPainOnDate(ds)?' haspain':'');
     cell.dataset.ds = ds;
 
     let inner = `<div class="num">${day}</div>`;
@@ -914,7 +918,8 @@ function renderCalendar(){
     LEGEND_ITEMS.map(([k,name])=>`<div class="item"><span class="dot" style="background:${ROLE_COLOR[k]}"></span>${name}</div>`).join('') +
     `<div class="item"><span class="swatch" style="background:var(--yellow)"></span>วันนี้</div>` +
     `<div class="item"><span class="swatch" style="background:#101010;border:1px solid var(--line)"></span>อดีต</div>` +
-    `<div class="item"><span class="swatch" style="background:var(--card2)"></span>อนาคต</div>`;
+    `<div class="item"><span class="swatch" style="background:var(--card2)"></span>อนาคต</div>` +
+    `<div class="item"><span class="swatch" style="background:transparent;box-shadow:inset 0 0 0 2px var(--red);"></span>มีอาการเจ็บ</div>`;
 
   renderCalDetail();
 }
@@ -942,7 +947,8 @@ function renderCalDetail(){
     if(log.time) stats.push('เวลา '+log.time);
     if(log.paceAvg) stats.push('เพซ '+log.paceAvg);
     if(log.hrAvg) stats.push('HR '+log.hrAvg);
-    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>`;
+    const painNoteRow = (log.pain && log.note) ? `<div class="drow" style="color:var(--red)">${log.note}</div>` : '';
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>${painNoteRow}`;
   } else {
     el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${isPast?'ไม่มีข้อมูลบันทึกไว้สำหรับวันนี้':'ยังไม่ถึงวันนี้ — ยังไม่มีการวางแผนตายตัว (ระบบเป็นคิว ไม่ผูกวันที่)'}</div>`;
   }
