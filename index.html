@@ -240,6 +240,7 @@
   <div class="panel" id="panel-queue">
     <div class="section-title">ลำดับที่จะถึง (เรียงตามวันจริง)</div>
     <div id="upcomingList"></div>
+    <div id="phaseProgressArea"></div>
     <div class="section-title">ความคืบหน้าแต่ละประเภท (เฟส: <span id="queuePhaseLabel">--</span>)</div>
     <div id="queueList"></div>
   </div>
@@ -961,6 +962,19 @@ function renderQueue(){
   document.getElementById('queuePhaseLabel').textContent = phaseLabel(eraName);
   const roles = eraName==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN;
   const counts = eraName==='taper' ? STATE.taperCounts : STATE.counts;
+
+  const activeRoles = roles.filter(rk=>!isRestRole(rk));
+  const totalDone = activeRoles.reduce((s,rk)=>s+(counts[rk]||0),0);
+  const totalExpected = activeRoles.length * 8;
+  const phasePct = Math.min(100, Math.round((totalDone/totalExpected)*100));
+  document.getElementById('phaseProgressArea').innerHTML = `
+    <div class="qrow" style="margin-bottom:14px;">
+      <div class="top"><b>ความคืบหน้าของเฟส ${phaseLabel(eraName)}</b><span>${phasePct}%</span></div>
+      <div class="bar"><div class="fill" style="width:${phasePct}%"></div></div>
+      <div class="next">ประมาณการจากค่าเฉลี่ย ไม่ใช่ตัวเลขตายตัว</div>
+    </div>
+  `;
+
   const el = document.getElementById('queueList');
   el.innerHTML = roles.filter(rk=>!isRestRole(rk)).map(rk=>{
     const n = (counts[rk]||0);
