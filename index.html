@@ -278,6 +278,7 @@
 
   <div class="panel" id="panel-history">
     <div class="section-title">ประวัติการซ้อมทั้งหมด (แก้ไข/ลบได้)</div>
+    <div id="historyFilters"></div>
     <div id="historyList"></div>
     <details class="backup">
       <summary>สำรอง / กู้คืนข้อมูล</summary>
@@ -1477,11 +1478,66 @@ function makeEfficiencyCard(){
   return card;
 }
 
+/* ========================= HISTORY FILTERS (H1) ========================= */
+const HISTORY_ROLE_GROUPS = {
+  easy: ['easy','easyRecovery','easyTaper','easyShort'],
+  speed: ['speed'],
+  weight: ['weight','weightNight','weightLight'],
+  long: ['long'],
+};
+const HISTORY_ROLE_FILTER_OPTIONS = [
+  {key:'all', label:'ทั้งหมด'}, {key:'easy', label:'Easy'}, {key:'speed', label:'Speed'},
+  {key:'weight', label:'Weight'}, {key:'long', label:'Long'},
+];
+let historyFilterRole = 'all';
+let historyFilterPain = false;
+let historyFilterFrom = '';
+let historyFilterTo = '';
+
+function passesHistoryFilters(l){
+  if(historyFilterRole!=='all' && !(HISTORY_ROLE_GROUPS[historyFilterRole]||[]).includes(l.role)) return false;
+  if(historyFilterPain && !l.pain) return false;
+  if(historyFilterFrom && l.dateStr < historyFilterFrom) return false;
+  if(historyFilterTo && l.dateStr > historyFilterTo) return false;
+  return true;
+}
+function historyFiltersActive(){
+  return historyFilterRole!=='all' || historyFilterPain || !!historyFilterFrom || !!historyFilterTo;
+}
+function renderHistoryFilters(){
+  const el = document.getElementById('historyFilters');
+  const roleChipsHtml = HISTORY_ROLE_FILTER_OPTIONS.map(o=>
+    `<div class="chip ${historyFilterRole===o.key?'sel':''}" data-role="${o.key}">${o.label}</div>`
+  ).join('');
+  el.innerHTML = `
+    <div class="chip-row">${roleChipsHtml}<div class="chip ${historyFilterPain?'sel':''}" id="historyPainChip">มีอาการเจ็บ</div></div>
+    <div class="field-grid" style="margin-top:8px;">
+      <div class="field"><label>ตั้งแต่วันที่</label><input type="date" id="historyFromInput" value="${historyFilterFrom}"></div>
+      <div class="field"><label>ถึงวันที่</label><input type="date" id="historyToInput" value="${historyFilterTo}"></div>
+    </div>
+    ${historyFiltersActive() ? '<button class="btn btn-ghost btn-small" id="historyResetBtn" style="margin-top:8px;">ล้างตัวกรอง</button>' : ''}
+  `;
+  el.querySelectorAll('.chip[data-role]').forEach(c=>{
+    c.onclick = ()=>{ historyFilterRole = c.dataset.role; renderHistory(); };
+  });
+  document.getElementById('historyPainChip').onclick = ()=>{ historyFilterPain = !historyFilterPain; renderHistory(); };
+  document.getElementById('historyFromInput').onchange = (e)=>{ historyFilterFrom = e.target.value; renderHistory(); };
+  document.getElementById('historyToInput').onchange = (e)=>{ historyFilterTo = e.target.value; renderHistory(); };
+  const resetBtn = document.getElementById('historyResetBtn');
+  if(resetBtn) resetBtn.onclick = ()=>{
+    historyFilterRole='all'; historyFilterPain=false; historyFilterFrom=''; historyFilterTo='';
+    renderHistory();
+  };
+}
+
 /* ========================= RENDER: HISTORY (edit/delete) ========================= */
 function renderHistory(){
+  renderHistoryFilters();
   const el = document.getElementById('historyList');
-  const logs = [...STATE.logs].sort((a,b)=>b.ts-a.ts);
-  if(logs.length===0){ el.innerHTML = '<div class="empty">ยังไม่มีประวัติการซ้อม</div>'; }
+  const logs = STATE.logs.filter(passesHistoryFilters).sort((a,b)=>b.ts-a.ts);
+  if(logs.length===0){
+    el.innerHTML = `<div class="empty">${historyFiltersActive() ? 'ไม่มีประวัติที่ตรงกับตัวกรองนี้' : 'ยังไม่มีประวัติการซ้อม'}</div>`;
+  }
   else{
     el.innerHTML = logs.map(l=>{
       const meta = ROLE_META[l.role] || {name:l.role};
