@@ -145,6 +145,13 @@
   .chart-card .sub{font-size:12px;color:var(--muted);margin-bottom:4px;}
   .chart-card .num{font-size:26px;font-weight:800;color:var(--yellow);margin:4px 0 6px;}
   .chart-card svg{width:100%;height:120px;display:block;}
+  .chart-plot{position:relative;touch-action:pan-y;}
+  .chart-plot .pt{cursor:pointer;}
+  .chart-plot .guide{display:none;}
+  .y-labels{position:absolute;left:0;top:0;height:100%;width:100%;font-size:9.5px;color:var(--muted);pointer-events:none;}
+  .chart-tip{position:absolute;display:none;transform:translate(-50%,-115%);background:#0A0A0A;
+    border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:11.5px;font-weight:600;
+    white-space:nowrap;pointer-events:none;z-index:2;}
   .legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:6px;}
   .legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
 
@@ -906,6 +913,7 @@ function makeChart(title, values, dates, baseline, lowerIsBetter){
   }
   const latest = clean[clean.length-1];
   const latestLabel = lowerIsBetter ? fmtSec(latest)+'/km' : latest;
+  const fmtAxisVal = (v)=> lowerIsBetter ? fmtSec(v)+'/km' : (Math.round(v*100)/100);
 
   // x-axis date labels at 0%, 30%, 60% of the axis (dedupe when few data points)
   const markPcts = [0, 0.3, 0.6];
@@ -914,17 +922,62 @@ function makeChart(title, values, dates, baseline, lowerIsBetter){
   const xLabels = markIdxs.map(i=>({pct: (clean.length>1 ? i/(clean.length-1) : 0)*100, text: fmtDateShort(cleanDates[i])}));
   const labelsHtml = xLabels.map(m=>`<span style="position:absolute;left:${m.pct}%;transform:translateX(${m.pct===0?'0':'-50%'});">${m.text}</span>`).join('');
 
+  // y-axis gridlines + labels at max / mid / min
+  const yLevels = [max, (max+min)/2, min].map(v=>{
+    const gy = h-pad - ((v-min)/range)*(h-2*pad);
+    return {v, gy};
+  });
+  const gridLinesSvg = yLevels.map(g=>`<line x1="${pad}" y1="${g.gy.toFixed(1)}" x2="${w-pad}" y2="${g.gy.toFixed(1)}" stroke="#2A2A2A" stroke-width="1"/>`).join('');
+  const yLabelsHtml = yLevels.map(g=>`<span style="position:absolute;left:2px;top:${((g.gy/h)*100).toFixed(1)}%;transform:translateY(-50%);">${fmtAxisVal(g.v)}</span>`).join('');
+
+  const pointCircles = pts.map((p,i)=>`<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#F5D800"/>`).join('');
+
   card.innerHTML = `
     <div class="title">${title}</div>
     <div class="num">${latestLabel}</div>
-    <svg viewBox="0 0 ${w} ${h}">
-      ${baseLine}
-      <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
-      <path d="${linePath}" fill="none" stroke="#F5D800" stroke-width="2.5"/>
-    </svg>
+    <div class="chart-plot">
+      <div class="y-labels">${yLabelsHtml}</div>
+      <svg class="chart-svg" viewBox="0 0 ${w} ${h}">
+        ${gridLinesSvg}
+        ${baseLine}
+        <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
+        <path d="${linePath}" fill="none" stroke="#F5D800" stroke-width="2.5"/>
+        ${pointCircles}
+        <line class="guide" x1="0" y1="${pad}" x2="0" y2="${h-pad}" stroke="#F5D800" stroke-width="1" stroke-dasharray="2,2"/>
+      </svg>
+      <div class="chart-tip"></div>
+    </div>
     <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
     <div class="legend"><span><span class="dot" style="background:#F5D800"></span>ค่าจริง</span>${baseline!=null?'<span><span class="dot" style="background:#8A8A8A"></span>ค่าเริ่มต้น</span>':''}</div>
   `;
+
+  const svgEl = card.querySelector('.chart-svg');
+  const tipEl = card.querySelector('.chart-tip');
+  const guideEl = card.querySelector('.guide');
+
+  function showTip(clientX){
+    const rect = svgEl.getBoundingClientRect();
+    const vbX = (clientX - rect.left) * (w/rect.width);
+    let nearest = 0, best = Infinity;
+    pts.forEach((p,i)=>{ const d = Math.abs(p[0]-vbX); if(d<best){ best=d; nearest=i; } });
+    const p = pts[nearest];
+    const px = p[0]*(rect.width/w);
+    const py = p[1]*(rect.height/h);
+    tipEl.style.left = px+'px';
+    tipEl.style.top = py+'px';
+    tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}`;
+    tipEl.style.display = 'block';
+    guideEl.setAttribute('x1', p[0]); guideEl.setAttribute('x2', p[0]);
+    guideEl.style.display = 'block';
+  }
+  function hideTip(){
+    tipEl.style.display = 'none';
+    guideEl.style.display = 'none';
+  }
+  svgEl.addEventListener('pointerdown', (e)=>{ showTip(e.clientX); });
+  svgEl.addEventListener('pointermove', (e)=>{ if(e.pointerType==='mouse') showTip(e.clientX); });
+  svgEl.addEventListener('pointerleave', (e)=>{ if(e.pointerType==='mouse') hideTip(); });
+
   return card;
 }
 
