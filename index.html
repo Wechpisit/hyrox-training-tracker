@@ -121,7 +121,15 @@
   .calcell .slot{font-size:11px;color:var(--muted);}
   .calcell .role{font-size:12.5px;font-weight:700;margin-top:4px;line-height:1.3;}
 
-  .cal-month-title{font-size:15px;font-weight:700;margin-bottom:10px;}
+  .cal-month-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .cal-month-title{font-size:15px;font-weight:700;}
+  .cal-nav-btn{width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
+    color:var(--text);font-size:18px;cursor:pointer;}
+  .cal-nav-btn:disabled{opacity:0.35;cursor:default;}
+  .cal-week-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);
+    padding:6px 2px;border-bottom:1px solid var(--line);}
+  .cal-week-row:last-child{border-bottom:none;}
+  .cal-week-row b{color:var(--text);}
   .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
   .cal-weekdays span{text-align:center;font-size:10.5px;color:var(--muted);}
   .cal-daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px;}
@@ -246,9 +254,15 @@
   </div>
 
   <div class="panel" id="panel-calendar">
-    <div class="cal-month-title" id="calMonthTitle">--</div>
+    <div class="cal-month-nav">
+      <button class="cal-nav-btn" id="calPrevBtn">‹</button>
+      <div class="cal-month-title" id="calMonthTitle">--</div>
+      <button class="cal-nav-btn" id="calNextBtn">›</button>
+    </div>
     <div class="cal-weekdays"><span>อา</span><span>จ</span><span>อ</span><span>พ</span><span>พฤ</span><span>ศ</span><span>ส</span></div>
     <div class="cal-daygrid" id="calDayGrid"></div>
+    <div class="section-title" style="margin:8px 0 6px;">สรุประยะรวมรายสัปดาห์ (จ-อา) ในเดือนนี้</div>
+    <div id="calWeeklySummary"></div>
     <div class="cal-legend" id="calLegend"></div>
     <div class="cal-detail" id="calDetail"></div>
   </div>
@@ -860,11 +874,30 @@ function hasPainOnDate(ds){
 }
 
 let calSelectedDs = null;
+let calViewYear = today.getFullYear();
+let calViewMonth = today.getMonth();
+
+function calBounds(){
+  const allDates = STATE.logs.map(l=>new Date(l.dateStr)).concat([today]);
+  const minDate = new Date(Math.min(...allDates.map(d=>d.getTime())));
+  const minYM = minDate.getFullYear()*12 + minDate.getMonth();
+  const maxYM = RACE_DAY.getFullYear()*12 + RACE_DAY.getMonth();
+  return {minYM, maxYM};
+}
 
 function renderCalendar(){
-  const year = today.getFullYear(), month = today.getMonth();
+  const year = calViewYear, month = calViewMonth;
   const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
   document.getElementById('calMonthTitle').textContent = `${monthNames[month]} ${year+543}`;
+
+  const {minYM, maxYM} = calBounds();
+  const curYM = year*12+month;
+  const prevBtn = document.getElementById('calPrevBtn');
+  const nextBtn = document.getElementById('calNextBtn');
+  prevBtn.disabled = curYM<=minYM;
+  nextBtn.disabled = curYM>=maxYM;
+  prevBtn.onclick = ()=>{ if(curYM>minYM){ const ym=curYM-1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; renderCalendar(); } };
+  nextBtn.onclick = ()=>{ if(curYM<maxYM){ const ym=curYM+1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; renderCalendar(); } };
 
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month+1, 0).getDate();
@@ -922,12 +955,37 @@ function renderCalendar(){
     `<div class="item"><span class="swatch" style="background:var(--card2)"></span>อนาคต</div>` +
     `<div class="item"><span class="swatch" style="background:transparent;box-shadow:inset 0 0 0 2px var(--red);"></span>มีอาการเจ็บ</div>`;
 
+  renderCalWeeklySummary(year, month);
   renderCalDetail();
+}
+
+/** Weekly distance subtotals for the displayed month (C4). Weeks are grouped Mon-Sun via the
+ * same mondayOf() boundary used by computeWeeklyTotals() (Performance #2) so the two views can
+ * never disagree on which days belong to which week — but unlike that function (which always
+ * sums a full trailing week ending "now"), this only sums the days that actually fall within
+ * the displayed month, so a week straddling a month boundary shows a genuinely partial total. */
+function renderCalWeeklySummary(year, month){
+  const el = document.getElementById('calWeeklySummary');
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const weeksMap = {};
+  for(let day=1; day<=daysInMonth; day++){
+    const d = new Date(year, month, day);
+    const wkKey = dateStr(mondayOf(d));
+    if(!weeksMap[wkKey]) weeksMap[wkKey] = { weekStart: mondayOf(d), km:0 };
+    const ds = dateStr(d);
+    STATE.logs.forEach(l=>{ if(l.dateStr===ds && !l.excludeFromStats) weeksMap[wkKey].km += parseFloat(l.distance)||0; });
+  }
+  const weeks = Object.values(weeksMap).sort((a,b)=>a.weekStart-b.weekStart);
+  el.innerHTML = weeks.map(w=>{
+    const parts = weekLabelParts(w.weekStart);
+    return `<div class="cal-week-row"><span>${parts.days} ${parts.month}</span><b>${w.km.toFixed(1)} กม.</b></div>`;
+  }).join('');
 }
 
 function renderCalDetail(){
   const el = document.getElementById('calDetail');
-  const ds = calSelectedDs || dateStr(today);
+  const viewingCurrentMonth = (calViewYear===today.getFullYear() && calViewMonth===today.getMonth());
+  const ds = calSelectedDs || (viewingCurrentMonth ? dateStr(today) : dateStr(new Date(calViewYear, calViewMonth, 1)));
   const d = new Date(ds);
   const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
   const isToday = ds===dateStr(today);
