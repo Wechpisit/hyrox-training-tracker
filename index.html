@@ -47,6 +47,7 @@
   .picker.open{display:flex;}
   .chip{min-height:44px;padding:8px 14px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
     color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
   .chip.sel{background:var(--yellow);color:#0A0A0A;border-color:var(--yellow);}
 
   .hero{background:var(--card);border-radius:20px;padding:20px 18px;border-left:5px solid var(--yellow);margin-bottom:16px;}
@@ -307,6 +308,15 @@ const ROLE_META = {
   easyShort:   { name:'Easy Run (สั้น)' },
 };
 
+const WORKOUT_TYPES = [
+  { key:'upper',      label:'Upper Body' },
+  { key:'lower',      label:'Lower Body' },
+  { key:'fullbody',   label:'Full Body' },
+  { key:'hiit',       label:'HIIT' },
+  { key:'simulation', label:'Simulation Hyrox' },
+];
+function workoutTypeLabel(key){ const wt = WORKOUT_TYPES.find(w=>w.key===key); return wt ? wt.label : key; }
+
 const RACEWEEK_SEQ = [
   { name:'Mobility + Activation เบาๆ', structure:'ยืดเหยียด + Activation เบาๆ ไม่เข้าเวทหนัก', tip:'เตรียมร่างกายให้สดสำหรับวันแข่ง' },
   { name:'Easy Shakeout Run', structure:'วิ่งเบาๆ 15-20 นาที + Strides 4x20 วิ', tip:'ปลุกกล้ามเนื้อ ไม่ต้องเหนื่อย' },
@@ -527,6 +537,23 @@ function renderToday(){
   const n = (counts[role]||0) + 1;
   const sess = buildSession(role, n);
   const meta = ROLE_META[role] || {name:role};
+  const weightDay = isWeightRole(role);
+
+  const detailFieldsHtml = weightDay ? `
+      <div class="field">
+        <label>ประเภทเวทวันนี้</label>
+        <div class="chip-row" id="workoutTypeRow"></div>
+      </div>` : `
+      <div class="field-grid">
+        <div class="field"><label>ระยะทาง (กม.)</label><input type="text" id="fDistance" placeholder="เช่น 6.2"></div>
+        <div class="field"><label>เวลารวม</label><input type="text" id="fTime" placeholder="เช่น 45:00"></div>
+        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="fPaceAvg" placeholder="เช่น 6:35/km"></div>
+        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="fPaceBest" placeholder="เช่น 6:10/km"></div>
+        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="fHrAvg" placeholder="bpm"></div>
+        <div class="field"><label>HR สูงสุด</label><input type="text" id="fHrMax" placeholder="bpm"></div>
+        <div class="field"><label>Cadence เฉลี่ย</label><input type="text" id="fCadence" placeholder="spm"></div>
+        <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="fGct" placeholder="ms"></div>
+      </div>`;
 
   hero.style.borderLeftColor = role==='recovery' ? 'var(--red)' : 'var(--yellow)';
   hero.innerHTML = `
@@ -548,16 +575,7 @@ function renderToday(){
     </div>
     <details class="more">
       <summary>บันทึกละเอียด</summary>
-      <div class="field-grid">
-        <div class="field"><label>ระยะทาง (กม.)</label><input type="text" id="fDistance" placeholder="เช่น 6.2"></div>
-        <div class="field"><label>เวลารวม</label><input type="text" id="fTime" placeholder="เช่น 45:00"></div>
-        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="fPaceAvg" placeholder="เช่น 6:35/km"></div>
-        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="fPaceBest" placeholder="เช่น 6:10/km"></div>
-        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="fHrAvg" placeholder="bpm"></div>
-        <div class="field"><label>HR สูงสุด</label><input type="text" id="fHrMax" placeholder="bpm"></div>
-        <div class="field"><label>Cadence เฉลี่ย</label><input type="text" id="fCadence" placeholder="spm"></div>
-        <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="fGct" placeholder="ms"></div>
-      </div>
+      ${detailFieldsHtml}
       <div class="field">
         <label>ความรู้สึก (RPE 1-10, ข้ามได้)</label>
         <div class="rpe-row" id="rpeRow"></div>
@@ -581,7 +599,21 @@ function renderToday(){
   const painToggle = document.getElementById('painToggle');
   painToggle.onclick = ()=>{ painOn = !painOn; painToggle.classList.toggle('on', painOn); };
 
-  bindActions(role, r.era, n, ()=>({rpe:rpeVal, pain:painOn}));
+  let workoutTypeVal = '';
+  if(weightDay){
+    const wtRow = document.getElementById('workoutTypeRow');
+    WORKOUT_TYPES.forEach(wt=>{
+      const b = document.createElement('div');
+      b.className = 'chip'; b.textContent = wt.label;
+      b.onclick = ()=>{ workoutTypeVal = (workoutTypeVal===wt.key) ? '' : wt.key;
+        wtRow.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+        if(workoutTypeVal) b.classList.add('sel');
+      };
+      wtRow.appendChild(b);
+    });
+  }
+
+  bindActions(role, r.era, n, ()=>({rpe:rpeVal, pain:painOn, workoutType:workoutTypeVal}));
 }
 
 function bindActions(role, eraName, n, extraGetter){
@@ -593,6 +625,7 @@ function bindActions(role, eraName, n, extraGetter){
       ['ระยะ/เวลา', val('fDistance')||val('fTime')],
       ['เพซเฉลี่ย', val('fPaceAvg')],
       ['HR เฉลี่ย', val('fHrAvg')],
+      ['ประเภทเวท', extra.workoutType ? workoutTypeLabel(extra.workoutType) : ''],
       ['ความรู้สึก (RPE)', extra.rpe],
       ['มีอาการเจ็บ/ปวด', extra.pain?'ใช่ ⚠️':'ไม่มี'],
     ].filter(f=>f[1]);
@@ -613,7 +646,8 @@ function doSave(role, eraName, n, partial, extra){
     ts: Date.now(), dateStr: dateStr(today), role: role||'raceweek', era: eraName, occurrence:n,
     done: true, partial: !!partial, pain: !!extra.pain, rpe: extra.rpe,
     distance: val('fDistance'), time: val('fTime'), paceAvg: val('fPaceAvg'), paceBest: val('fPaceBest'),
-    hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'), note: val('fNote')
+    hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'),
+    workoutType: extra.workoutType||'', note: val('fNote')
   };
   STATE.logs.push(entry);
   if(role && role!=='restday' && role!=='recovery'){
@@ -991,12 +1025,29 @@ function renderHistory(){
       const meta = ROLE_META[l.role] || {name:l.role};
       const d = new Date(l.dateStr);
       const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'});
+      const weightEntry = isWeightRole(l.role);
       const stats = [];
+      if(l.workoutType) stats.push('ประเภท '+workoutTypeLabel(l.workoutType));
       if(l.distance) stats.push('ระยะ '+l.distance);
       if(l.time) stats.push('เวลา '+l.time);
       if(l.paceAvg) stats.push('เพซ '+l.paceAvg);
       if(l.hrAvg) stats.push('HR '+l.hrAvg);
       if(l.partial) stats.push('ทำไม่ครบ');
+      const editFieldsHtml = weightEntry ? `
+          <div class="field"><label>ประเภทเวท</label>
+            <select id="e-workoutType-${l.ts}" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;color:var(--text);font-size:13.5px;">
+              <option value="">-- เลือก --</option>
+              ${WORKOUT_TYPES.map(wt=>`<option value="${wt.key}" ${l.workoutType===wt.key?'selected':''}>${wt.label}</option>`).join('')}
+            </select>
+          </div>` : `
+          <div class="field-grid">
+            <div class="field"><label>ระยะทาง</label><input type="text" id="e-distance-${l.ts}" value="${l.distance||''}"></div>
+            <div class="field"><label>เวลารวม</label><input type="text" id="e-time-${l.ts}" value="${l.time||''}"></div>
+            <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="e-paceAvg-${l.ts}" value="${l.paceAvg||''}"></div>
+            <div class="field"><label>เพซดีที่สุด</label><input type="text" id="e-paceBest-${l.ts}" value="${l.paceBest||''}"></div>
+            <div class="field"><label>HR เฉลี่ย</label><input type="text" id="e-hrAvg-${l.ts}" value="${l.hrAvg||''}"></div>
+            <div class="field"><label>HR สูงสุด</label><input type="text" id="e-hrMax-${l.ts}" value="${l.hrMax||''}"></div>
+          </div>`;
       return `<div class="hrow" data-ts="${l.ts}">
         <div class="top"><span>${meta.name} ${l.occurrence?('#'+l.occurrence):''} ${l.excludeFromStats?'<span class="seedflag">(ไม่นับสถิติ)</span>':(l.historical?'<span class="seedflag">(ประวัติก่อนเริ่มแอป)</span>':'')}</span><span class="date">${dstr}</span></div>
         <div class="stats">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'} ${l.pain?'<span class="painflag"> · มีอาการเจ็บ</span>':''}</div>
@@ -1005,14 +1056,7 @@ function renderHistory(){
           <button class="btn btn-danger btn-small" data-act="delete" data-ts="${l.ts}">ลบ</button>
         </div>
         <div class="editform" id="editform-${l.ts}">
-          <div class="field-grid">
-            <div class="field"><label>ระยะทาง</label><input type="text" id="e-distance-${l.ts}" value="${l.distance||''}"></div>
-            <div class="field"><label>เวลารวม</label><input type="text" id="e-time-${l.ts}" value="${l.time||''}"></div>
-            <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="e-paceAvg-${l.ts}" value="${l.paceAvg||''}"></div>
-            <div class="field"><label>เพซดีที่สุด</label><input type="text" id="e-paceBest-${l.ts}" value="${l.paceBest||''}"></div>
-            <div class="field"><label>HR เฉลี่ย</label><input type="text" id="e-hrAvg-${l.ts}" value="${l.hrAvg||''}"></div>
-            <div class="field"><label>HR สูงสุด</label><input type="text" id="e-hrMax-${l.ts}" value="${l.hrMax||''}"></div>
-          </div>
+          ${editFieldsHtml}
           <div class="field"><label>โน้ต</label><textarea id="e-note-${l.ts}" rows="2">${l.note||''}</textarea></div>
           <div class="actions"><button class="btn btn-ghost btn-small" data-act="cancelEdit" data-ts="${l.ts}">ยกเลิก</button>
           <button class="btn btn-yes btn-small" data-act="saveEdit" data-ts="${l.ts}">บันทึกการแก้ไข</button></div>
@@ -1037,6 +1081,7 @@ function renderHistory(){
         entry.distance = g('e-distance-'+ts); entry.time = g('e-time-'+ts);
         entry.paceAvg = g('e-paceAvg-'+ts); entry.paceBest = g('e-paceBest-'+ts);
         entry.hrAvg = g('e-hrAvg-'+ts); entry.hrMax = g('e-hrMax-'+ts);
+        entry.workoutType = g('e-workoutType-'+ts);
         entry.note = g('e-note-'+ts);
         saveState();
         renderHistory();
