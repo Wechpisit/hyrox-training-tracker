@@ -241,6 +241,7 @@
 
     <div id="preCheck" style="display:none;"></div>
     <div class="hero" id="hero"></div>
+    <div id="extraSessionArea"></div>
 
     <div class="save-tag" id="savedTag">บันทึกแล้ว ✓</div>
   </div>
@@ -399,6 +400,26 @@ function plainTip(role){
 }
 function isRestRole(role){ return role==='restday'; }
 function isWeightRole(role){ return role==='weight'||role==='weightNight'||role==='weightLight'; }
+
+/** T2: most recent past entry of the same role — real (in-app) entries preferred, falling
+ * back to a historical import only if no real entry exists yet. Null if neither exists. */
+function findPreviousOccurrence(role){
+  const matches = [...STATE.logs].filter(l=>l.role===role).sort((a,b)=>b.ts-a.ts);
+  const real = matches.find(l=>!l.historical);
+  return real || matches[0] || null;
+}
+function buildPrevLineHtml(role, n){
+  const prev = findPreviousOccurrence(role);
+  if(!prev) return '';
+  const bits = [];
+  if(prev.paceAvg) bits.push('เพซ '+prev.paceAvg);
+  else if(prev.distance) bits.push('ระยะ '+prev.distance+' กม.');
+  if(prev.hrAvg) bits.push('HR เฉลี่ย '+prev.hrAvg);
+  if(prev.workoutType) bits.push('ประเภท '+workoutTypeLabel(prev.workoutType));
+  if(bits.length===0) return '';
+  const label = (!prev.historical && n>1) ? `ครั้งก่อน (#${n-1})` : 'ครั้งก่อน (จากประวัติ)';
+  return `<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">${label}: ${bits.join(' · ')}</div>`;
+}
 
 function buildSession(role, n){
   if(role==='speed') return speedProgression(n);
@@ -561,6 +582,7 @@ function renderToday(){
 
   const hero = document.getElementById('hero');
   const preCheckEl = document.getElementById('preCheck');
+  document.getElementById('extraSessionArea').innerHTML = '';
   const isSpeedToday = (r.role === 'speed');
   const alreadyLoggedSpeedToday = isSpeedToday && STATE.logs.some(l=>l.dateStr===dateStr(today) && l.role==='speed');
   const showPreCheck = isSpeedToday && !alreadyLoggedSpeedToday;
@@ -679,6 +701,7 @@ function renderToday(){
     <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
     <h1>${meta.name}</h1>
     <div class="plain-tip">${plainTip(role)}</div>
+    ${buildPrevLineHtml(role, n)}
     <div class="meta-grid">
       <div class="meta-box"><div class="k">ระยะ/เวลา</div><div class="v">${sess.distance}</div></div>
       <div class="meta-box"><div class="k">เพซเป้าหมาย</div><div class="v">${sess.pace}</div></div>
@@ -737,10 +760,121 @@ function renderToday(){
     preCheckShinOk: isSpeedToday ? preCheckAnswers.shinOk : null,
     preCheckSleepOk: isSpeedToday ? preCheckAnswers.sleepOk : null,
   }));
+
+  renderExtraSession(r.era);
 }
 
-function bindActions(role, eraName, n, extraGetter){
-  function val(id){ const e=document.getElementById(id); return e?e.value:''; }
+/* ========================= EXTRA SESSION (log a second, independent session for today) ========================= */
+let extraSessionOpen = false;
+let extraSessionRole = null;
+
+function renderExtraSession(eraName){
+  const el = document.getElementById('extraSessionArea');
+  const roleOptions = (eraName==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN).filter(r=>!isRestRole(r));
+
+  if(!extraSessionOpen){
+    el.innerHTML = `<button class="editbtn" id="extraSessionToggle" style="width:100%;margin-bottom:14px;">+ เพิ่มเซสชันอื่นสำหรับวันนี้</button>`;
+    document.getElementById('extraSessionToggle').onclick = ()=>{ extraSessionOpen = true; renderToday(); };
+    return;
+  }
+
+  const counts = eraName==='taper' ? STATE.taperCounts : STATE.counts;
+  const roleChipsHtml = roleOptions.map(rk=>{
+    const label = ROLE_META[rk] ? ROLE_META[rk].name : rk;
+    return `<div class="chip ${extraSessionRole===rk?'sel':''}" data-role="${rk}">${label}</div>`;
+  }).join('');
+
+  let formHtml = '';
+  if(extraSessionRole){
+    const rk = extraSessionRole;
+    const n = (counts[rk]||0)+1;
+    const sess = buildSession(rk, n);
+    const meta = ROLE_META[rk]||{name:rk};
+    const weightDay = isWeightRole(rk);
+    const detailFieldsHtml = weightDay ? `
+      <div class="field"><label>ประเภทเวทวันนี้</label><div class="chip-row" id="xworkoutTypeRow"></div></div>` : `
+      <div class="field-grid">
+        <div class="field"><label>ระยะทาง (กม.)</label><input type="text" id="xfDistance" placeholder="เช่น 6.2"></div>
+        <div class="field"><label>เวลารวม</label><input type="text" id="xfTime" placeholder="เช่น 45:00"></div>
+        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="xfPaceAvg" placeholder="เช่น 6:35/km"></div>
+        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="xfPaceBest" placeholder="เช่น 6:10/km"></div>
+        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="xfHrAvg" placeholder="bpm"></div>
+        <div class="field"><label>HR สูงสุด</label><input type="text" id="xfHrMax" placeholder="bpm"></div>
+        <div class="field"><label>Cadence เฉลี่ย</label><input type="text" id="xfCadence" placeholder="spm"></div>
+        <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="xfGct" placeholder="ms"></div>
+      </div>`;
+    formHtml = `
+      <div class="structure" style="margin-top:10px;">${meta.name} · ครั้งที่ ${n}: ${sess.distance} · ${sess.pace}</div>
+      ${detailFieldsHtml}
+      <div class="field"><label>ความรู้สึก (RPE 1-10, ข้ามได้)</label><div class="rpe-row" id="xrpeRow"></div></div>
+      <div class="painrow">
+        <span>มีอาการเจ็บ/ปวดไหม</span>
+        <button class="toggle" id="xpainToggle"><div class="knob"></div></button>
+      </div>
+      <div class="field"><label>โน้ต</label><textarea id="xfNote" rows="2" placeholder="ความรู้สึก, สภาพอากาศ, อื่นๆ..."></textarea></div>
+      <div class="actions" style="margin-top:12px;">
+        <button class="btn btn-yes" id="xdoneBtn">ทำสำเร็จ</button>
+        <button class="btn btn-partial" id="xpartialBtn">ทำไม่ครบ</button>
+      </div>
+    `;
+  }
+
+  el.innerHTML = `
+    <details class="more" open>
+      <summary>+ เพิ่มเซสชันอื่นสำหรับวันนี้</summary>
+      <div class="chip-row" id="extraRoleRow">${roleChipsHtml}</div>
+      <div id="extraSessionForm">${formHtml}</div>
+    </details>
+  `;
+
+  el.querySelectorAll('#extraRoleRow .chip').forEach(c=>{
+    c.onclick = ()=>{ extraSessionRole = c.dataset.role; renderToday(); };
+  });
+
+  if(!extraSessionRole) return;
+
+  const rk = extraSessionRole;
+  const n = (counts[rk]||0)+1;
+  const weightDay = isWeightRole(rk);
+
+  const rpeRow = document.getElementById('xrpeRow');
+  let rpeVal = null;
+  for(let i=1;i<=10;i++){
+    const b = document.createElement('button');
+    b.className='rpe-btn'; b.textContent=i; b.type='button';
+    b.onclick = ()=>{ rpeVal = (rpeVal===i)?null:i;
+      rpeRow.querySelectorAll('.rpe-btn').forEach(x=>x.classList.remove('sel'));
+      if(rpeVal) b.classList.add('sel');
+    };
+    rpeRow.appendChild(b);
+  }
+  let painOn = false;
+  const painToggle = document.getElementById('xpainToggle');
+  painToggle.onclick = ()=>{ painOn = !painOn; painToggle.classList.toggle('on', painOn); };
+
+  let workoutTypeVal = '';
+  if(weightDay){
+    const wtRow = document.getElementById('xworkoutTypeRow');
+    WORKOUT_TYPES.forEach(wt=>{
+      const b = document.createElement('div');
+      b.className = 'chip'; b.textContent = wt.label;
+      b.onclick = ()=>{ workoutTypeVal = (workoutTypeVal===wt.key) ? '' : wt.key;
+        wtRow.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+        if(workoutTypeVal) b.classList.add('sel');
+      };
+      wtRow.appendChild(b);
+    });
+  }
+
+  bindActions(rk, eraName, n, ()=>({
+    rpe:rpeVal, pain:painOn, workoutType:workoutTypeVal,
+    preCheckShinOk: null, preCheckSleepOk: null,
+  }), 'x', ()=>{ extraSessionOpen = false; extraSessionRole = null; });
+}
+
+function bindActions(role, eraName, n, extraGetter, idPrefix, onSaved){
+  idPrefix = idPrefix || '';
+  function val(id){ const e=document.getElementById(idPrefix+id); return e?e.value:''; }
   const openConfirm = (partial)=>{
     const extra = extraGetter ? extraGetter() : {pain:false, rpe:null};
     const meta = role ? (ROLE_META[role]||{name:role}) : {name:'Race Day'};
@@ -755,16 +889,17 @@ function bindActions(role, eraName, n, extraGetter){
     const summary = `<b>${meta.name}${n?(' · ครั้งที่ '+n):''}</b>${partial?' — ทำไม่ครบ':' — ทำสำเร็จ'}<br><br>` +
       fields.map(f=>`${f[0]}: <b>${f[1]}</b>`).join('<br>') +
       (fields.length===0 ? 'ไม่ได้กรอกรายละเอียดเพิ่มเติม' : '');
-    showConfirm('ยืนยันการบันทึก', summary, ()=>doSave(role, eraName, n, partial, extra));
+    showConfirm('ยืนยันการบันทึก', summary, ()=>doSave(role, eraName, n, partial, extra, idPrefix, onSaved));
   };
-  const doneBtn = document.getElementById('doneBtn');
+  const doneBtn = document.getElementById(idPrefix+'doneBtn');
   if(doneBtn) doneBtn.onclick = ()=>openConfirm(false);
-  const partialBtn = document.getElementById('partialBtn');
+  const partialBtn = document.getElementById(idPrefix+'partialBtn');
   if(partialBtn) partialBtn.onclick = ()=>openConfirm(true);
 }
 
-function doSave(role, eraName, n, partial, extra){
-  function val(id){ const e=document.getElementById(id); return e?e.value:''; }
+function doSave(role, eraName, n, partial, extra, idPrefix, onSaved){
+  idPrefix = idPrefix || '';
+  function val(id){ const e=document.getElementById(idPrefix+id); return e?e.value:''; }
   const entry = {
     ts: Date.now(), dateStr: dateStr(today), role: role||'raceweek', era: eraName, occurrence:n,
     done: true, partial: !!partial, pain: !!extra.pain, rpe: extra.rpe,
@@ -785,6 +920,7 @@ function doSave(role, eraName, n, partial, extra){
   saveState();
   const tag = document.getElementById('savedTag');
   if(tag){ tag.style.display='block'; setTimeout(()=>tag.style.display='none',1600); }
+  if(onSaved) onSaved();
   renderAll();
 }
 
