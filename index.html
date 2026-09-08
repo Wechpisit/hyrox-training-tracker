@@ -88,6 +88,17 @@
   details.more summary::-webkit-details-marker{display:none;}
   details.more summary::after{content:'+ บันทึกละเอียด';float:right;color:var(--muted);font-weight:500;}
   details.more[open] summary::after{content:'– ซ่อน';}
+
+  .progression-details{background:var(--card2);border-radius:12px;padding:10px 12px;margin-top:12px;}
+  .progression-details summary{font-size:12.5px;font-weight:700;cursor:pointer;list-style:none;color:var(--yellow);}
+  .progression-details summary::-webkit-details-marker{display:none;}
+  .progression-details[open] summary{margin-bottom:10px;}
+  .prog-row{background:var(--card);border-radius:8px;padding:8px 10px;margin-bottom:6px;}
+  .prog-row.current{border-left:3px solid var(--yellow);}
+  .prog-row-top{display:flex;justify-content:space-between;font-size:12.5px;}
+  .prog-row-detail{font-size:11.5px;color:var(--muted);margin-top:3px;}
+  .prog-row-note{font-size:11px;color:var(--muted);margin-top:2px;font-style:italic;}
+
   .field{margin-top:10px;}
   .field label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;}
   .field input, .field textarea{width:100%;background:var(--card2);border:1px solid var(--line);
@@ -473,6 +484,29 @@ function buildSession(role, n){
   return {distance:'-', pace:'-', structure:'-'};
 }
 
+/** T3: only speed/long have a real progression function worth exposing — everything else is
+ * either a fixed session or a simple fixed-value formula not framed as a step table. Shows every
+ * explicit step plus a few extrapolated future ones so the list doesn't feel like it cuts off. */
+const PROGRESSION_ROLES = ['speed','long'];
+function buildProgressionTableHtml(role, currentN){
+  if(!PROGRESSION_ROLES.includes(role)) return '';
+  const totalRows = Math.min(20, Math.max(currentN + 4, 10));
+  let rowsHtml = '';
+  for(let n=1; n<=totalRows; n++){
+    const sess = role==='speed' ? speedProgression(n) : longProgression(n);
+    rowsHtml += `<div class="prog-row ${n===currentN?'current':''}">
+      <div class="prog-row-top"><b>ครั้งที่ ${n}</b><span>${sess.pace}</span></div>
+      <div class="prog-row-detail">${sess.distance}</div>
+      <div class="prog-row-note">${sess.structure}</div>
+    </div>`;
+  }
+  return `
+    <details class="progression-details">
+      <summary>ดูตารางความก้าวหน้าเต็ม</summary>
+      <div class="prog-rows">${rowsHtml}</div>
+    </details>`;
+}
+
 /* ========================= STATE (localStorage) ========================= */
 const STORAGE_KEY = 'hyrox-app-state-v1';
 let STATE = { counts:{}, taperCounts:{}, dayOverride:{}, pendingRecovery:false, logs:[] };
@@ -758,6 +792,7 @@ function renderToday(){
       </div>
       <div class="field"><label>โน้ต</label><textarea id="fNote" rows="2" placeholder="ความรู้สึก, สภาพอากาศ, อื่นๆ..."></textarea></div>
     </details>
+    ${buildProgressionTableHtml(role, n)}
   `;
 
   const rpeRow = document.getElementById('rpeRow');
