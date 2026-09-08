@@ -314,6 +314,8 @@ const RACEWEEK_START = new Date(2027,1,8);
 const RACE_DAY = new Date(2027,1,11);
 
 const BASELINE = { easyPace: '7:45', bestTempoPace: '6:41', bestTempoDate:'24/08/2026' };
+const TARGET_RACE_PACE_SEC = 6*60;
+const RACE_PROJECTION_MARGIN_SEC = 15;
 
 const CYCLE_MAIN  = ['easy','speed','weight','long','restday','restday','weightNight','easyRecovery'];
 const CYCLE_TAPER = ['easyTaper','racePace','restMobility','temposhort','restday','restday','weightLight','easyShort'];
@@ -1379,6 +1381,7 @@ function renderProgress(){
   const chartArea = document.getElementById('chartArea');
   chartArea.innerHTML = '';
   chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true, speedLogs.map(l=>l.pain?(l.note||'มีอาการเจ็บ'):null)));
+  chartArea.appendChild(makeRaceProjectionCard());
   chartArea.appendChild(makeEfficiencyCard());
   chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
 }
@@ -1488,6 +1491,68 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
   svgEl.addEventListener('pointermove', (e)=>{ if(e.pointerType==='mouse') showTip(e.clientX); });
   svgEl.addEventListener('pointerleave', (e)=>{ if(e.pointerType==='mouse') hideTip(); });
 
+  return card;
+}
+
+/* ========================= RACE GOAL PROJECTION (Performance #3) ========================= */
+/** Simple linear regression (day-offset vs. pace-in-seconds) over the last 8 Speed Session
+ * entries, extrapolated to RACE_DAY. Returns null if fewer than 4 points — a trend line through
+ * fewer than that is not worth showing as a projection. */
+function computeRaceProjection(speedPaceLogsAsc){
+  const recent = speedPaceLogsAsc.slice(-8);
+  if(recent.length < 4) return null;
+  const firstDate = new Date(recent[0].dateStr);
+  const xs = recent.map(r=>daysBetween(firstDate, new Date(r.dateStr)));
+  const ys = recent.map(r=>r.paceSec);
+  const n = xs.length;
+  const sumX = xs.reduce((a,b)=>a+b,0), sumY = ys.reduce((a,b)=>a+b,0);
+  const sumXY = xs.reduce((s,x,i)=>s+x*ys[i],0);
+  const sumX2 = xs.reduce((s,x)=>s+x*x,0);
+  const denom = (n*sumX2 - sumX*sumX);
+  const slope = denom===0 ? 0 : (n*sumXY - sumX*sumY)/denom;
+  const intercept = (sumY - slope*sumX)/n;
+  const xRace = daysBetween(firstDate, RACE_DAY);
+  return { predicted: slope*xRace + intercept };
+}
+
+function makeRaceProjectionCard(){
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+
+  const speedPaceLogsAsc = [...STATE.logs]
+    .filter(l=>l.role==='speed' && !l.excludeFromStats)
+    .map(l=>({ dateStr:l.dateStr, ts:l.ts, paceSec:parsePaceToSec(l.paceBest||l.paceAvg) }))
+    .filter(l=>l.paceSec!=null)
+    .sort((a,b)=>a.ts-b.ts);
+
+  const proj = computeRaceProjection(speedPaceLogsAsc);
+  if(!proj){
+    card.innerHTML = `
+      <div class="title">แนวโน้มสู่เป้าหมายวันแข่ง</div>
+      <div class="sub">ต้องมีข้อมูลมากกว่านี้ก่อนจะประมาณการได้แม่นยำ (ต้องมีอย่างน้อย 4 เซสชัน Speed Session ที่มีเพซบันทึกไว้)</div>
+    `;
+    return card;
+  }
+
+  const r0 = resolveToday(today);
+  const isTaperOrRace = (r0.era==='taper' || r0.era==='raceweek');
+  const daysLeft = Math.max(daysBetween(today, RACE_DAY), 0);
+  const diff = proj.predicted - TARGET_RACE_PACE_SEC;
+
+  let color, statusText;
+  if(diff<=0){ color='#4CD964'; statusText='ถึงเป้าหมายแล้ว! 🎉'; }
+  else if(diff<=RACE_PROJECTION_MARGIN_SEC){ color='var(--yellow)'; statusText=`ห่างจากเป้าหมาย 6:00/km อยู่ ${Math.round(diff)} วินาที/กม.`; }
+  else { color='var(--red)'; statusText=`ห่างจากเป้าหมาย 6:00/km อยู่ ${Math.round(diff)} วินาที/กม.`; }
+
+  const title = isTaperOrRace ? 'ช่วง Taper: รักษาฟอร์มไว้' : 'แนวโน้มสู่เป้าหมายวันแข่ง';
+
+  card.innerHTML = `
+    <div class="title">${title}</div>
+    <div class="num" style="color:${color};">คาดการณ์: ${fmtSec(Math.round(proj.predicted))}/km</div>
+    <div class="sub" style="color:${color};">${statusText}</div>
+    <div class="sub">อีก ${daysLeft} วันจนถึงวันแข่ง</div>
+    <div class="sub" style="margin-top:6px;">เป็นการประมาณจากแนวโน้มที่ผ่านมาเท่านั้น ไม่ใช่การรับประกันผล และไม่นับรวมช่วง Taper ซึ่งจะเน้นพักมากกว่าพัฒนาเพซเพิ่ม</div>
+  `;
   return card;
 }
 
