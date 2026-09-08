@@ -1792,12 +1792,12 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
     card.innerHTML = `<div class="title">${title}</div><div class="sub">ยังไม่มีข้อมูลพอสำหรับกราฟ บันทึกผลซ้อมเพิ่มเติมเพื่อดูเทรนด์</div>`;
     return card;
   }
-  const w=300,h=100,pad=8;
+  const w=300,h=100,pad=8,padLeft=40; // padLeft keeps the plotted line clear of the Y-axis label column
   const allVals = baseline? clean.concat([baseline]) : clean;
   const min = Math.min(...allVals), max = Math.max(...allVals);
   const range = (max-min)||1;
   const pts = clean.map((v,i)=>{
-    const x = pad + (i/(Math.max(clean.length-1,1)))*(w-2*pad);
+    const x = padLeft + (i/(Math.max(clean.length-1,1)))*(w-padLeft-pad);
     const y = h-pad - ((v-min)/range)*(h-2*pad);
     return [x,y];
   });
@@ -1816,8 +1816,8 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
   const markPcts = [0, 0.3, 0.6];
   let markIdxs = markPcts.map(p=>Math.round(p*(clean.length-1)));
   markIdxs = [...new Set(markIdxs)];
-  const xLabels = markIdxs.map(i=>({pct: (clean.length>1 ? i/(clean.length-1) : 0)*100, text: fmtDateShort(cleanDates[i])}));
-  const labelsHtml = xLabels.map(m=>`<span style="position:absolute;left:${m.pct}%;transform:translateX(${m.pct===0?'0':'-50%'});">${m.text}</span>`).join('');
+  const xLabels = markIdxs.map(i=>({pct: (pts[i][0]/w)*100, text: fmtDateShort(cleanDates[i])}));
+  const labelsHtml = xLabels.map(m=>`<span style="position:absolute;left:${m.pct}%;transform:translateX(-50%);">${m.text}</span>`).join('');
 
   // y-axis gridlines + labels at max / mid / min
   const yLevels = [max, (max+min)/2, min].map(v=>{
@@ -1991,11 +1991,11 @@ function makeEfficiencyCard(){
   }
 
   const values = inBand.map(l=>parsePaceToSec(l.paceAvg||l.paceBest));
-  const w=300, h=100, pad=8;
+  const w=300, h=100, pad=8, padLeft=40; // padLeft keeps the plotted line clear of the Y-axis label column
   const min = Math.min(...values), max = Math.max(...values);
   const range = (max-min)||1;
   const pts = values.map((v,i)=>{
-    const x = pad + (i/(Math.max(values.length-1,1)))*(w-2*pad);
+    const x = padLeft + (i/(Math.max(values.length-1,1)))*(w-padLeft-pad);
     const y = h-pad - ((v-min)/range)*(h-2*pad);
     return [x,y];
   });
@@ -2010,8 +2010,8 @@ function makeEfficiencyCard(){
   let markIdxs = markPcts.map(p=>Math.round(p*(values.length-1)));
   markIdxs = [...new Set(markIdxs)];
   const labelsHtml = markIdxs.map(i=>{
-    const pct = (values.length>1 ? i/(values.length-1) : 0)*100;
-    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(inBand[i].dateStr)}</span>`;
+    const pct = (pts[i][0]/w)*100;
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(-50%);">${fmtDateShort(inBand[i].dateStr)}</span>`;
   }).join('');
 
   const pointCircles = pts.map((p,i)=>{
@@ -2090,12 +2090,23 @@ function computeRpeWarningActive(){
  * false on next real load, so a still-true warning reappears next time the app is opened. */
 let rpeWarningDismissed = false;
 
-function buildMiniTrendSvg(values, dates){
-  const w=300, h=64, pad=8;
+// Shared coordinate constants for every mini trend chart (buildMiniTrendSvg + its callers'
+// date-label rows) so the plotted line and the date labels underneath always agree on where a
+// given index actually sits — padLeft keeps the line clear of the Y-axis label column on the left.
+const MINI_CHART_W = 300, MINI_CHART_PAD = 8, MINI_CHART_PAD_LEFT = 40;
+function miniChartXPct(i, len){
+  const idxFrac = len>1 ? i/(len-1) : 0;
+  const vbX = MINI_CHART_PAD_LEFT + idxFrac*(MINI_CHART_W - MINI_CHART_PAD_LEFT - MINI_CHART_PAD);
+  return (vbX/MINI_CHART_W)*100;
+}
+/** yFmt formats a Y-axis gridline value into label text; defaults to a plain one-decimal number
+ * (fine for RPE/Cadence/GCT) — pass e.g. v=>fmtSec(v)+'/km' for a pace-valued mini-chart. */
+function buildMiniTrendSvg(values, dates, yFmt){
+  const w=MINI_CHART_W, h=64, pad=MINI_CHART_PAD, padLeft=MINI_CHART_PAD_LEFT;
   const min = Math.min(...values), max = Math.max(...values);
   const range = (max-min)||1;
   const pts = values.map((v,i)=>{
-    const x = pad + (i/(Math.max(values.length-1,1)))*(w-2*pad);
+    const x = padLeft + (i/(Math.max(values.length-1,1)))*(w-padLeft-pad);
     const y = h-pad - ((v-min)/range)*(h-2*pad);
     return [x,y];
   });
@@ -2103,9 +2114,12 @@ function buildMiniTrendSvg(values, dates){
   const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(1)},${h-pad} L${pts[0][0].toFixed(1)},${h-pad} Z`;
   const yLevels = [max, (max+min)/2, min].map(v=>{ const gy = h-pad - ((v-min)/range)*(h-2*pad); return {v, gy}; });
   const gridLinesSvg = yLevels.map(g=>`<line x1="${pad}" y1="${g.gy.toFixed(1)}" x2="${w-pad}" y2="${g.gy.toFixed(1)}" stroke="#2A2A2A" stroke-width="1"/>`).join('');
+  const fmtVal = yFmt || (v=>Math.round(v*10)/10);
+  const yLabelsHtml = yLevels.map(g=>`<span style="position:absolute;left:2px;top:${((g.gy/h)*100).toFixed(1)}%;transform:translateY(-50%);">${fmtVal(g.v)}</span>`).join('');
   const pointCircles = pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#F5D800"/>`).join('');
   return `
     <div class="chart-plot" style="height:${h}px;">
+      <div class="y-labels">${yLabelsHtml}</div>
       <svg class="chart-svg" viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">
         ${gridLinesSvg}
         <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
@@ -2128,12 +2142,12 @@ function buildFormMiniBlock(logs, field, unit){
   let markIdxs = markPcts.map(p=>Math.round(p*(dates.length-1)));
   markIdxs = [...new Set(markIdxs)];
   const labelsHtml = markIdxs.map(i=>{
-    const pct = (dates.length>1 ? i/(dates.length-1) : 0)*100;
-    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(dates[i])}</span>`;
+    const pct = miniChartXPct(i, dates.length);
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(-50%);">${fmtDateShort(dates[i])}</span>`;
   }).join('');
   return `
     <div class="num" style="font-size:18px;margin:4px 0 2px;">${latest}${unit}</div>
-    ${buildMiniTrendSvg(values, dates)}
+    ${buildMiniTrendSvg(values, dates, v=>Math.round(v))}
     <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
   `;
 }
@@ -2190,8 +2204,8 @@ function makeRpeVsPaceCard(){
   let markIdxs = markPcts.map(p=>Math.round(p*(dates.length-1)));
   markIdxs = [...new Set(markIdxs)];
   const labelsHtml = markIdxs.map(i=>{
-    const pct = (dates.length>1 ? i/(dates.length-1) : 0)*100;
-    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(dates[i])}</span>`;
+    const pct = miniChartXPct(i, dates.length);
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(-50%);">${fmtDateShort(dates[i])}</span>`;
   }).join('');
 
   const latestRpe = rpeVals[rpeVals.length-1];
@@ -2204,7 +2218,7 @@ function makeRpeVsPaceCard(){
     <div style="font-size:11px;color:var(--muted);margin-top:6px;">RPE (ยิ่งสูงยิ่งเหนื่อย)</div>
     ${buildMiniTrendSvg(rpeVals, dates)}
     <div style="font-size:11px;color:var(--muted);margin-top:8px;">เพซ (ยิ่งต่ำยิ่งดี)</div>
-    ${buildMiniTrendSvg(paceVals, dates)}
+    ${buildMiniTrendSvg(paceVals, dates, v=>fmtSec(v)+'/km')}
     <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
   `;
 
