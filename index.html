@@ -1698,7 +1698,8 @@ function renderAdherence(){
   const card2 = a.entriesCount>0
     ? `<div class="pr-box"><div class="k">อัตราทำครบเซสชัน</div><div class="v">${a.fullPct}%</div><div class="base">${a.fullCount} จาก ${a.entriesCount} เซสชันทำครบเต็ม</div></div>`
     : `<div class="pr-box"><div class="k">อัตราทำครบเซสชัน</div><div class="v">ยังไม่มีข้อมูล</div><div class="base">ยังไม่มีเซสชันที่บันทึกในช่วงนี้</div></div>`;
-  el.innerHTML = `<div class="pr-grid">${card1}${card2}</div>${disclaimerHtml}`;
+  const scopeNoteHtml = `<div class="sub" style="margin-top:6px;">นับเฉพาะเซสชันที่บันทึกผ่านแอป ไม่รวมข้อมูลนำเข้าจากไฟล์เก่า (Garmin CSV)</div>`;
+  el.innerHTML = `<div class="pr-grid">${card1}${card2}</div>${disclaimerHtml}${scopeNoteHtml}`;
 }
 
 function renderProgress(){
