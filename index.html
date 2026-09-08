@@ -50,7 +50,7 @@
   .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
   .chip.sel{background:var(--yellow);color:#0A0A0A;border-color:var(--yellow);}
 
-  .hero{background:var(--card);border-radius:20px;padding:20px 18px;border-left:5px solid var(--yellow);margin-bottom:16px;}
+  .hero{background:var(--card);border-radius:20px;padding:20px 18px;margin-bottom:16px;}
   .precheck-card{background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:12px;border-left:4px solid var(--yellow);}
   .pc-title{font-size:13px;font-weight:700;margin-bottom:10px;color:var(--muted);}
   .pc-q{margin-bottom:10px;}
@@ -637,7 +637,6 @@ function renderToday(){
   }
 
   if(isRestRole(r.role)){
-    hero.style.borderLeftColor = 'var(--yellow)';
     hero.innerHTML = `
       <div class="eyebrow">${phaseLabel(r.era)}</div>
       <h1>วันพัก</h1>
@@ -658,7 +657,6 @@ function renderToday(){
     (preCheckAnswers.shinOk===false || preCheckAnswers.sleepOk===false);
 
   if(needsPreCheckRedirect){
-    hero.style.borderLeftColor = 'var(--red)';
     hero.innerHTML = `
       <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
       <h1>ทบทวนก่อนซ้อมเร็ว</h1>
@@ -698,7 +696,6 @@ function renderToday(){
         <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="fGct" placeholder="ms"></div>
       </div>`;
 
-  hero.style.borderLeftColor = role==='recovery' ? 'var(--red)' : 'var(--yellow)';
   hero.innerHTML = `
     <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
     <h1>${meta.name}</h1>
@@ -874,13 +871,14 @@ function renderExtraSession(eraName){
   }), 'x', ()=>{ extraSessionOpen = false; extraSessionRole = null; });
 }
 
-function bindActions(role, eraName, n, extraGetter, idPrefix, onSaved){
+function bindActions(role, eraName, n, extraGetter, idPrefix, onSaved, targetDateStr){
   idPrefix = idPrefix || '';
   function val(id){ const e=document.getElementById(idPrefix+id); return e?e.value:''; }
   const openConfirm = (partial)=>{
     const extra = extraGetter ? extraGetter() : {pain:false, rpe:null};
     const meta = role ? (ROLE_META[role]||{name:role}) : {name:'Race Day'};
     const fields = [
+      ['วันที่', targetDateStr || ''],
       ['ระยะ/เวลา', val('fDistance')||val('fTime')],
       ['เพซเฉลี่ย', val('fPaceAvg')],
       ['HR เฉลี่ย', val('fHrAvg')],
@@ -891,7 +889,7 @@ function bindActions(role, eraName, n, extraGetter, idPrefix, onSaved){
     const summary = `<b>${meta.name}${n?(' · ครั้งที่ '+n):''}</b>${partial?' — ทำไม่ครบ':' — ทำสำเร็จ'}<br><br>` +
       fields.map(f=>`${f[0]}: <b>${f[1]}</b>`).join('<br>') +
       (fields.length===0 ? 'ไม่ได้กรอกรายละเอียดเพิ่มเติม' : '');
-    showConfirm('ยืนยันการบันทึก', summary, ()=>doSave(role, eraName, n, partial, extra, idPrefix, onSaved));
+    showConfirm('ยืนยันการบันทึก', summary, ()=>doSave(role, eraName, n, partial, extra, idPrefix, onSaved, targetDateStr));
   };
   const doneBtn = document.getElementById(idPrefix+'doneBtn');
   if(doneBtn) doneBtn.onclick = ()=>openConfirm(false);
@@ -899,11 +897,11 @@ function bindActions(role, eraName, n, extraGetter, idPrefix, onSaved){
   if(partialBtn) partialBtn.onclick = ()=>openConfirm(true);
 }
 
-function doSave(role, eraName, n, partial, extra, idPrefix, onSaved){
+function doSave(role, eraName, n, partial, extra, idPrefix, onSaved, targetDateStr){
   idPrefix = idPrefix || '';
   function val(id){ const e=document.getElementById(idPrefix+id); return e?e.value:''; }
   const entry = {
-    ts: Date.now(), dateStr: dateStr(today), role: role||'raceweek', era: eraName, occurrence:n,
+    ts: Date.now(), dateStr: targetDateStr || dateStr(today), role: role||'raceweek', era: eraName, occurrence:n,
     done: true, partial: !!partial, pain: !!extra.pain, rpe: extra.rpe,
     distance: val('fDistance'), time: val('fTime'), paceAvg: val('fPaceAvg'), paceBest: val('fPaceBest'),
     hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'),
@@ -1035,8 +1033,8 @@ function renderCalendar(){
   const nextBtn = document.getElementById('calNextBtn');
   prevBtn.disabled = curYM<=minYM;
   nextBtn.disabled = curYM>=maxYM;
-  prevBtn.onclick = ()=>{ if(curYM>minYM){ const ym=curYM-1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; renderCalendar(); } };
-  nextBtn.onclick = ()=>{ if(curYM<maxYM){ const ym=curYM+1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; renderCalendar(); } };
+  prevBtn.onclick = ()=>{ if(curYM>minYM){ const ym=curYM-1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; backdateOpen=false; backdateRole=null; renderCalendar(); } };
+  nextBtn.onclick = ()=>{ if(curYM<maxYM){ const ym=curYM+1; calViewYear=Math.floor(ym/12); calViewMonth=((ym%12)+12)%12; calSelectedDs=null; backdateOpen=false; backdateRole=null; renderCalendar(); } };
 
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month+1, 0).getDate();
@@ -1081,7 +1079,7 @@ function renderCalendar(){
       inner += `<div class="abbr" style="color:var(--muted);font-size:8.5px;">${slotLabel(d)}</div>`;
     }
     cell.innerHTML = inner;
-    cell.onclick = ()=>{ calSelectedDs = ds; renderCalendar(); };
+    cell.onclick = ()=>{ calSelectedDs = ds; backdateOpen = false; backdateRole = null; renderCalendar(); };
     if(ds===calSelectedDs) cell.classList.add('selected');
     grid.appendChild(cell);
   }
@@ -1137,6 +1135,7 @@ function renderCalDetail(){
     el.innerHTML = `<div class="dtitle">${dstr} ${label} · วันนี้</div><div class="drow">แผนวันนี้: ${roleName}</div><div class="drow">ดูรายละเอียดและบันทึกผลได้ที่แท็บ Today</div>`;
     return;
   }
+  const backdateAreaHtml = isPast ? `<div id="calBackdateArea"></div>` : '';
   const log = findLogForDate(ds);
   if(log){
     const meta = ROLE_META[log.role]||{name:log.role};
@@ -1146,10 +1145,126 @@ function renderCalDetail(){
     if(log.paceAvg) stats.push('เพซ '+log.paceAvg);
     if(log.hrAvg) stats.push('HR '+log.hrAvg);
     const painNoteRow = (log.pain && log.note) ? `<div class="drow" style="color:var(--red)">${log.note}</div>` : '';
-    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>${painNoteRow}`;
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>${painNoteRow}${backdateAreaHtml}`;
   } else {
-    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${isPast?'ไม่มีข้อมูลบันทึกไว้สำหรับวันนี้':'ยังไม่ถึงวันนี้ — ยังไม่มีการวางแผนตายตัว (ระบบเป็นคิว ไม่ผูกวันที่)'}</div>`;
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${isPast?'ไม่มีข้อมูลบันทึกไว้สำหรับวันนี้':'ยังไม่ถึงวันนี้ — ยังไม่มีการวางแผนตายตัว (ระบบเป็นคิว ไม่ผูกวันที่)'}</div>${backdateAreaHtml}`;
   }
+  if(isPast) renderCalBackdateForm(ds);
+}
+
+/* ========================= BACKDATED LOGGING (add a missed past session from the Calendar tab) ========================= */
+let backdateOpen = false;
+let backdateRole = null;
+
+function renderCalBackdateForm(ds){
+  const el = document.getElementById('calBackdateArea');
+  if(!el) return;
+  const eraRaw = era(new Date(ds));
+  if(eraRaw==='raceweek'){ el.innerHTML=''; return; }
+  const eraName = eraRaw;
+  const roleOptions = (eraName==='taper' ? OVERRIDE_OPTIONS_TAPER : OVERRIDE_OPTIONS_MAIN).filter(r=>!isRestRole(r));
+
+  if(!backdateOpen){
+    el.innerHTML = `<button class="editbtn" id="calBackdateToggle" style="width:100%;margin-top:10px;">+ เพิ่มข้อมูลย้อนหลังสำหรับวันนี้</button>`;
+    document.getElementById('calBackdateToggle').onclick = ()=>{ backdateOpen = true; renderCalDetail(); };
+    return;
+  }
+
+  const counts = eraName==='taper' ? STATE.taperCounts : STATE.counts;
+  const roleChipsHtml = roleOptions.map(rk=>{
+    const label = ROLE_META[rk] ? ROLE_META[rk].name : rk;
+    return `<div class="chip ${backdateRole===rk?'sel':''}" data-role="${rk}">${label}</div>`;
+  }).join('');
+
+  let formHtml = '';
+  if(backdateRole){
+    const rk = backdateRole;
+    const n = (counts[rk]||0)+1;
+    const sess = buildSession(rk, n);
+    const meta = ROLE_META[rk]||{name:rk};
+    const weightDay = isWeightRole(rk);
+    const detailFieldsHtml = weightDay ? `
+      <div class="field"><label>ประเภทเวทวันนั้น</label><div class="chip-row" id="bworkoutTypeRow"></div></div>` : `
+      <div class="field-grid">
+        <div class="field"><label>ระยะทาง (กม.)</label><input type="text" id="bfDistance" placeholder="เช่น 6.2"></div>
+        <div class="field"><label>เวลารวม</label><input type="text" id="bfTime" placeholder="เช่น 45:00"></div>
+        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="bfPaceAvg" placeholder="เช่น 6:35/km"></div>
+        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="bfPaceBest" placeholder="เช่น 6:10/km"></div>
+        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="bfHrAvg" placeholder="bpm"></div>
+        <div class="field"><label>HR สูงสุด</label><input type="text" id="bfHrMax" placeholder="bpm"></div>
+        <div class="field"><label>Cadence เฉลี่ย</label><input type="text" id="bfCadence" placeholder="spm"></div>
+        <div class="field"><label>GCT เฉลี่ย</label><input type="text" id="bfGct" placeholder="ms"></div>
+      </div>`;
+    formHtml = `
+      <div class="structure" style="margin-top:10px;">${meta.name} · ครั้งที่ ${n}: ${sess.distance} · ${sess.pace}</div>
+      ${detailFieldsHtml}
+      <div class="field"><label>ความรู้สึก (RPE 1-10, ข้ามได้)</label><div class="rpe-row" id="brpeRow"></div></div>
+      <div class="painrow">
+        <span>มีอาการเจ็บ/ปวดไหม</span>
+        <button class="toggle" id="bpainToggle"><div class="knob"></div></button>
+      </div>
+      <div class="field"><label>โน้ต</label><textarea id="bfNote" rows="2" placeholder="ความรู้สึก, สภาพอากาศ, อื่นๆ..."></textarea></div>
+      <div class="actions" style="margin-top:12px;">
+        <button class="btn btn-yes" id="bdoneBtn">ทำสำเร็จ</button>
+        <button class="btn btn-partial" id="bpartialBtn">ทำไม่ครบ</button>
+      </div>
+    `;
+  }
+
+  el.innerHTML = `
+    <details class="more" open style="margin-top:10px;">
+      <summary>+ เพิ่มข้อมูลย้อนหลังสำหรับวันนี้</summary>
+      <div class="chip-row" id="calBackdateRoleRow">${roleChipsHtml}</div>
+      <div id="calBackdateForm">${formHtml}</div>
+    </details>
+  `;
+
+  el.querySelectorAll('#calBackdateRoleRow .chip').forEach(c=>{
+    c.onclick = ()=>{ backdateRole = c.dataset.role; renderCalDetail(); };
+  });
+
+  if(!backdateRole) return;
+
+  const rk = backdateRole;
+  const n = (counts[rk]||0)+1;
+  const weightDay = isWeightRole(rk);
+
+  const rpeRow = document.getElementById('brpeRow');
+  let rpeVal = null;
+  for(let i=1;i<=10;i++){
+    const b = document.createElement('button');
+    b.className='rpe-btn'; b.textContent=i; b.type='button';
+    b.onclick = ()=>{ rpeVal = (rpeVal===i)?null:i;
+      rpeRow.querySelectorAll('.rpe-btn').forEach(x=>x.classList.remove('sel'));
+      if(rpeVal) b.classList.add('sel');
+    };
+    rpeRow.appendChild(b);
+  }
+  let painOn = false;
+  const painToggle = document.getElementById('bpainToggle');
+  painToggle.onclick = ()=>{ painOn = !painOn; painToggle.classList.toggle('on', painOn); };
+
+  let workoutTypeVal = '';
+  if(weightDay){
+    const wtRow = document.getElementById('bworkoutTypeRow');
+    WORKOUT_TYPES.forEach(wt=>{
+      const b = document.createElement('div');
+      b.className = 'chip'; b.textContent = wt.label;
+      b.onclick = ()=>{ workoutTypeVal = (workoutTypeVal===wt.key) ? '' : wt.key;
+        wtRow.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+        if(workoutTypeVal) b.classList.add('sel');
+      };
+      wtRow.appendChild(b);
+    });
+  }
+
+  bindActions(rk, eraName, n, ()=>({
+    rpe:rpeVal, pain:painOn, workoutType:workoutTypeVal,
+    preCheckShinOk: null, preCheckSleepOk: null,
+  }), 'b', ()=>{
+    backdateOpen = false; backdateRole = null;
+    renderCalendar();
+  }, ds);
 }
 
 /* ========================= RENDER: QUEUE (progress by type) ========================= */
