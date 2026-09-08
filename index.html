@@ -1829,9 +1829,7 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
 
   const pointCircles = pts.map((p,i)=>{
     const isPain = !!cleanPain[i];
-    const dot = `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${isPain?'#FF3B30':'#F5D800'}"/>`;
-    const painMark = isPain ? `<text x="${p[0].toFixed(1)}" y="${Math.max(p[1]-6,8).toFixed(1)}" font-size="8" text-anchor="middle">🩹</text>` : '';
-    return dot + painMark;
+    return `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${isPain?'#FF3B30':'#F5D800'}"/>`;
   }).join('');
 
   card.innerHTML = `
@@ -1867,8 +1865,7 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
     const py = p[1]*(rect.height/h);
     tipEl.style.left = px+'px';
     tipEl.style.top = py+'px';
-    const painSuffix = cleanPain[nearest] ? ` · 🩹 ${cleanPain[nearest]}` : '';
-    tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}${painSuffix}`;
+    tipEl.textContent = `${fmtDateShort(cleanDates[nearest])} · ${fmtAxisVal(clean[nearest])}`;
     tipEl.style.display = 'block';
     guideEl.setAttribute('x1', p[0]); guideEl.setAttribute('x2', p[0]);
     guideEl.style.display = 'block';
@@ -1883,6 +1880,16 @@ function makeChart(title, values, dates, baseline, lowerIsBetter, painNotes){
 
   return card;
 }
+
+/* Any tapped chart tooltip (makeChart(), makeEfficiencyCard()) should disappear once the user
+ * scrolls away instead of staying pinned to its point while they read something else — registered
+ * once here (not per chart-card render) so it never accumulates duplicate listeners across the
+ * many times chartArea gets rebuilt. Targets by class, so it works for every chart regardless of
+ * which function created it. */
+window.addEventListener('scroll', ()=>{
+  document.querySelectorAll('.chart-tip').forEach(el=>{ el.style.display='none'; });
+  document.querySelectorAll('.chart-plot .guide').forEach(el=>{ el.style.display='none'; });
+}, {passive:true});
 
 /* ========================= RACE GOAL PROJECTION (Performance #3) ========================= */
 /** Simple linear regression (day-offset vs. pace-in-seconds) over the last 8 Speed Session
