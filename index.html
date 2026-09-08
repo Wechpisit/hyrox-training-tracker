@@ -114,6 +114,10 @@
   .section-title{font-size:13px;color:var(--muted);margin:20px 0 8px;line-height:1.5;}
   .taper-countdown{font-size:12.5px;color:var(--muted);margin-bottom:14px;}
   .taper-countdown b{color:var(--text);font-weight:700;}
+  .override-nudge{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--card);border:1px solid var(--yellow);border-radius:12px;
+    padding:10px 12px;font-size:12.5px;color:var(--text);margin-bottom:14px;}
+  .override-nudge button{white-space:nowrap;}
   .qrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
   .qrow .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px;}
   .qrow .top b{font-weight:700;}
@@ -282,7 +286,9 @@
   </div>
 
   <div class="panel" id="panel-queue">
+    <div id="overrideNudgeArea"></div>
     <div id="taperCountdownArea"></div>
+    <div id="longRunGapArea"></div>
     <div class="section-title">ลำดับที่จะถึง (เรียงตามวันจริง)</div>
     <div id="upcomingList"></div>
     <div id="phaseProgressArea"></div>
@@ -1369,9 +1375,57 @@ function renderTaperCountdown(){
   el.innerHTML = html;
 }
 
+/* P2: days since last Long Run, shown near the top of the Plan tab. */
+const LONG_RUN_GAP_WARN_DAYS = 10;
+function renderLongRunGap(){
+  const el = document.getElementById('longRunGapArea');
+  if(!el) return;
+  const longLogs = STATE.logs.filter(l=>l.role==='long' && !l.excludeFromStats).sort((a,b)=>b.ts-a.ts);
+  if(longLogs.length===0){
+    el.innerHTML = `<div class="taper-countdown">ยังไม่มีข้อมูล Long Run</div>`;
+    return;
+  }
+  const gap = daysBetween(new Date(longLogs[0].dateStr), today);
+  const warn = gap > LONG_RUN_GAP_WARN_DAYS;
+  el.innerHTML = `<div class="taper-countdown"${warn?' style="color:var(--red);"':''}>วิ่งยาวครั้งล่าสุด: <b${warn?' style="color:var(--red);"':''}>${gap}</b> วันที่แล้ว</div>`;
+}
+
+/* P3: nudge if manual overrides have been frequent lately — dismissal persists in STATE
+ * (not just this session) since the spec wants the banner re-evaluated ~7 real days later. */
+function countRecentOverrides(){
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - 13);
+  const cutoffStr = dateStr(cutoff);
+  const todayStr = dateStr(today);
+  return Object.keys(STATE.dayOverride||{}).filter(ds=> ds>=cutoffStr && ds<=todayStr).length;
+}
+function overrideNudgeActive(){
+  if(countRecentOverrides() < 4) return false;
+  const dismissedAt = STATE.overrideNudgeDismissedAt;
+  if(dismissedAt && (Date.now() - dismissedAt) < 7*86400000) return false;
+  return true;
+}
+function renderOverrideNudge(){
+  const el = document.getElementById('overrideNudgeArea');
+  if(!el) return;
+  if(!overrideNudgeActive()){ el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="override-nudge">
+      <span>สังเกตว่าคุณแก้ไขวันหลายครั้งในช่วงนี้ — ตารางกะที่ตั้งไว้ยังตรงกับที่ทำงานจริงอยู่ไหม?</span>
+      <button type="button" class="btn btn-ghost btn-small" id="overrideNudgeDismiss">เข้าใจแล้ว</button>
+    </div>`;
+  document.getElementById('overrideNudgeDismiss').onclick = ()=>{
+    STATE.overrideNudgeDismissedAt = Date.now();
+    saveState();
+    renderOverrideNudge();
+  };
+}
+
 /* ========================= RENDER: QUEUE (progress by type) ========================= */
 function renderQueue(){
+  renderOverrideNudge();
   renderTaperCountdown();
+  renderLongRunGap();
   const r0 = resolveToday(today);
   const eraName = r0.era==='raceweek' ? 'main' : r0.era;
   document.getElementById('queuePhaseLabel').textContent = phaseLabel(eraName);
