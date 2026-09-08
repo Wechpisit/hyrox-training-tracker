@@ -1570,6 +1570,7 @@ function renderProgress(){
   chartArea.appendChild(makeRaceProjectionCard());
   chartArea.appendChild(makeEfficiencyCard());
   chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
+  chartArea.appendChild(makeFormTrendCard());
   chartArea.appendChild(makeRpeVsPaceCard());
 }
 function fmtDateShort(ds){
@@ -1903,6 +1904,51 @@ function buildMiniTrendSvg(values, dates){
         ${pointCircles}
       </svg>
     </div>`;
+}
+
+/* ========================= RUNNING FORM TREND (Performance #5) ========================= */
+function buildFormMiniBlock(logs, field, unit){
+  if(logs.length===0){
+    const fieldName = field==='cadence' ? 'Cadence' : 'GCT';
+    return `<div class="sub" style="margin-top:6px;">ยังไม่มีข้อมูล ${fieldName} เพียงพอ</div>`;
+  }
+  const values = logs.map(l=>parseFloat(l[field]));
+  const dates = logs.map(l=>l.dateStr);
+  const latest = values[values.length-1];
+  const markPcts = [0, 0.3, 0.6];
+  let markIdxs = markPcts.map(p=>Math.round(p*(dates.length-1)));
+  markIdxs = [...new Set(markIdxs)];
+  const labelsHtml = markIdxs.map(i=>{
+    const pct = (dates.length>1 ? i/(dates.length-1) : 0)*100;
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(dates[i])}</span>`;
+  }).join('');
+  return `
+    <div class="num" style="font-size:18px;margin:4px 0 2px;">${latest}${unit}</div>
+    ${buildMiniTrendSvg(values, dates)}
+    <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
+  `;
+}
+function makeFormTrendCard(){
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  const title = 'ฟอร์มการวิ่ง (Cadence & Ground Contact Time)';
+
+  const cadenceLogs = STATE.logs.filter(l=>!l.excludeFromStats && parseFloat(l.cadence)).sort((a,b)=>a.ts-b.ts);
+  const gctLogs = STATE.logs.filter(l=>!l.excludeFromStats && parseFloat(l.gct)).sort((a,b)=>a.ts-b.ts);
+
+  if(cadenceLogs.length===0 && gctLogs.length===0){
+    card.innerHTML = `<div class="title">${title}</div><div class="sub">ข้อมูลนี้มีเฉพาะเซสชันที่บันทึกละเอียดไว้ (Cadence/GCT) ยังไม่มีข้อมูลเพียงพอสำหรับกราฟนี้</div>`;
+    return card;
+  }
+
+  card.innerHTML = `
+    <div class="title">${title}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Cadence (ยิ่งสูงยิ่งดี)</div>
+    ${buildFormMiniBlock(cadenceLogs, 'cadence', ' spm')}
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;">Ground Contact Time (ยิ่งต่ำยิ่งดี)</div>
+    ${buildFormMiniBlock(gctLogs, 'gct', ' ms')}
+  `;
+  return card;
 }
 
 function makeRpeVsPaceCard(){
