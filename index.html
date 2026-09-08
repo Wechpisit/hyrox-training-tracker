@@ -190,6 +190,16 @@
   .history-summary{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:12px;font-size:13.5px;color:var(--muted);}
   .history-summary b{color:var(--text);font-weight:700;}
 
+  .history-month-group{margin-bottom:6px;}
+  .history-month-group summary{position:sticky;top:0;z-index:2;background:var(--bg);
+    font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;list-style:none;
+    padding:8px 2px;border-bottom:1px solid var(--line);}
+  .history-month-group summary::-webkit-details-marker{display:none;}
+  .history-month-group summary::before{content:'▸ ';}
+  .history-month-group[open] summary::before{content:'▾ ';}
+  .history-month-group summary .count{font-weight:500;}
+  .history-month-rows{padding-top:8px;}
+
   .hrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
   .hrow .top{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;}
   .hrow .top .date{color:var(--muted);font-weight:500;font-size:12px;}
@@ -2026,6 +2036,53 @@ function renderHistorySummary(){
 }
 
 /* ========================= RENDER: HISTORY (edit/delete) ========================= */
+const HISTORY_MONTH_NAMES_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+function historyMonthLabel(ym){
+  const [y,m] = ym.split('-').map(Number);
+  return `${HISTORY_MONTH_NAMES_TH[m-1]} ${y+543}`;
+}
+function buildHistoryRowHtml(l){
+  const meta = ROLE_META[l.role] || {name:l.role};
+  const d = new Date(l.dateStr);
+  const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'});
+  const weightEntry = isWeightRole(l.role);
+  const stats = [];
+  if(l.workoutType) stats.push('ประเภท '+workoutTypeLabel(l.workoutType));
+  if(l.distance) stats.push('ระยะ '+l.distance);
+  if(l.time) stats.push('เวลา '+l.time);
+  if(l.paceAvg) stats.push('เพซ '+l.paceAvg);
+  if(l.hrAvg) stats.push('HR '+l.hrAvg);
+  if(l.partial) stats.push('ทำไม่ครบ');
+  const editFieldsHtml = weightEntry ? `
+      <div class="field"><label>ประเภทเวท</label>
+        <select id="e-workoutType-${l.ts}" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;color:var(--text);font-size:13.5px;">
+          <option value="">-- เลือก --</option>
+          ${WORKOUT_TYPES.map(wt=>`<option value="${wt.key}" ${l.workoutType===wt.key?'selected':''}>${wt.label}</option>`).join('')}
+        </select>
+      </div>` : `
+      <div class="field-grid">
+        <div class="field"><label>ระยะทาง</label><input type="text" id="e-distance-${l.ts}" value="${l.distance||''}"></div>
+        <div class="field"><label>เวลารวม</label><input type="text" id="e-time-${l.ts}" value="${l.time||''}"></div>
+        <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="e-paceAvg-${l.ts}" value="${l.paceAvg||''}"></div>
+        <div class="field"><label>เพซดีที่สุด</label><input type="text" id="e-paceBest-${l.ts}" value="${l.paceBest||''}"></div>
+        <div class="field"><label>HR เฉลี่ย</label><input type="text" id="e-hrAvg-${l.ts}" value="${l.hrAvg||''}"></div>
+        <div class="field"><label>HR สูงสุด</label><input type="text" id="e-hrMax-${l.ts}" value="${l.hrMax||''}"></div>
+      </div>`;
+  return `<div class="hrow" data-ts="${l.ts}">
+    <div class="top"><span>${meta.name} ${l.occurrence?('#'+l.occurrence):''} ${l.excludeFromStats?'<span class="seedflag">(ไม่นับสถิติ)</span>':(l.historical?'<span class="seedflag">(ประวัติก่อนเริ่มแอป)</span>':'')}</span><span class="date">${dstr}</span></div>
+    <div class="stats">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'} ${l.pain?'<span class="painflag"> · มีอาการเจ็บ</span>':''}</div>
+    <div class="hactions">
+      <button class="btn btn-ghost btn-small" data-act="edit" data-ts="${l.ts}">แก้ไข</button>
+      <button class="btn btn-danger btn-small" data-act="delete" data-ts="${l.ts}">ลบ</button>
+    </div>
+    <div class="editform" id="editform-${l.ts}">
+      ${editFieldsHtml}
+      <div class="field"><label>โน้ต</label><textarea id="e-note-${l.ts}" rows="2">${l.note||''}</textarea></div>
+      <div class="actions"><button class="btn btn-ghost btn-small" data-act="cancelEdit" data-ts="${l.ts}">ยกเลิก</button>
+      <button class="btn btn-yes btn-small" data-act="saveEdit" data-ts="${l.ts}">บันทึกการแก้ไข</button></div>
+    </div>
+  </div>`;
+}
 function renderHistory(){
   renderHistorySummary();
   renderHistoryFilters();
@@ -2035,47 +2092,20 @@ function renderHistory(){
     el.innerHTML = `<div class="empty">${historyFiltersActive() ? 'ไม่มีประวัติที่ตรงกับตัวกรองนี้' : 'ยังไม่มีประวัติการซ้อม'}</div>`;
   }
   else{
-    el.innerHTML = logs.map(l=>{
-      const meta = ROLE_META[l.role] || {name:l.role};
-      const d = new Date(l.dateStr);
-      const dstr = d.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'});
-      const weightEntry = isWeightRole(l.role);
-      const stats = [];
-      if(l.workoutType) stats.push('ประเภท '+workoutTypeLabel(l.workoutType));
-      if(l.distance) stats.push('ระยะ '+l.distance);
-      if(l.time) stats.push('เวลา '+l.time);
-      if(l.paceAvg) stats.push('เพซ '+l.paceAvg);
-      if(l.hrAvg) stats.push('HR '+l.hrAvg);
-      if(l.partial) stats.push('ทำไม่ครบ');
-      const editFieldsHtml = weightEntry ? `
-          <div class="field"><label>ประเภทเวท</label>
-            <select id="e-workoutType-${l.ts}" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;color:var(--text);font-size:13.5px;">
-              <option value="">-- เลือก --</option>
-              ${WORKOUT_TYPES.map(wt=>`<option value="${wt.key}" ${l.workoutType===wt.key?'selected':''}>${wt.label}</option>`).join('')}
-            </select>
-          </div>` : `
-          <div class="field-grid">
-            <div class="field"><label>ระยะทาง</label><input type="text" id="e-distance-${l.ts}" value="${l.distance||''}"></div>
-            <div class="field"><label>เวลารวม</label><input type="text" id="e-time-${l.ts}" value="${l.time||''}"></div>
-            <div class="field"><label>เพซเฉลี่ย</label><input type="text" id="e-paceAvg-${l.ts}" value="${l.paceAvg||''}"></div>
-            <div class="field"><label>เพซดีที่สุด</label><input type="text" id="e-paceBest-${l.ts}" value="${l.paceBest||''}"></div>
-            <div class="field"><label>HR เฉลี่ย</label><input type="text" id="e-hrAvg-${l.ts}" value="${l.hrAvg||''}"></div>
-            <div class="field"><label>HR สูงสุด</label><input type="text" id="e-hrMax-${l.ts}" value="${l.hrMax||''}"></div>
-          </div>`;
-      return `<div class="hrow" data-ts="${l.ts}">
-        <div class="top"><span>${meta.name} ${l.occurrence?('#'+l.occurrence):''} ${l.excludeFromStats?'<span class="seedflag">(ไม่นับสถิติ)</span>':(l.historical?'<span class="seedflag">(ประวัติก่อนเริ่มแอป)</span>':'')}</span><span class="date">${dstr}</span></div>
-        <div class="stats">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'} ${l.pain?'<span class="painflag"> · มีอาการเจ็บ</span>':''}</div>
-        <div class="hactions">
-          <button class="btn btn-ghost btn-small" data-act="edit" data-ts="${l.ts}">แก้ไข</button>
-          <button class="btn btn-danger btn-small" data-act="delete" data-ts="${l.ts}">ลบ</button>
-        </div>
-        <div class="editform" id="editform-${l.ts}">
-          ${editFieldsHtml}
-          <div class="field"><label>โน้ต</label><textarea id="e-note-${l.ts}" rows="2">${l.note||''}</textarea></div>
-          <div class="actions"><button class="btn btn-ghost btn-small" data-act="cancelEdit" data-ts="${l.ts}">ยกเลิก</button>
-          <button class="btn btn-yes btn-small" data-act="saveEdit" data-ts="${l.ts}">บันทึกการแก้ไข</button></div>
-        </div>
-      </div>`;
+    // H4: group the already-filtered/sorted list by month of dateStr, most recent month first.
+    // Entries keep their existing relative order (ts desc) within each month's group.
+    const groups = {};
+    logs.forEach(l=>{
+      const ym = l.dateStr.slice(0,7);
+      (groups[ym] = groups[ym] || []).push(l);
+    });
+    const ymKeys = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+    el.innerHTML = ymKeys.map((ym,gi)=>{
+      const rowsHtml = groups[ym].map(buildHistoryRowHtml).join('');
+      return `<details class="history-month-group" ${gi<2?'open':''}>
+        <summary>${historyMonthLabel(ym)} <span class="count">(${groups[ym].length})</span></summary>
+        <div class="history-month-rows">${rowsHtml}</div>
+      </details>`;
     }).join('');
   }
 
