@@ -101,6 +101,8 @@
   .save-tag{font-size:12px;color:var(--yellow);margin-top:10px;display:none;text-align:center;}
 
   .section-title{font-size:13px;color:var(--muted);margin:20px 0 8px;line-height:1.5;}
+  .taper-countdown{font-size:12.5px;color:var(--muted);margin-bottom:14px;}
+  .taper-countdown b{color:var(--text);font-weight:700;}
   .qrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
   .qrow .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px;}
   .qrow .top b{font-weight:700;}
@@ -252,6 +254,7 @@
   </div>
 
   <div class="panel" id="panel-queue">
+    <div id="taperCountdownArea"></div>
     <div class="section-title">ลำดับที่จะถึง (เรียงตามวันจริง)</div>
     <div id="upcomingList"></div>
     <div id="phaseProgressArea"></div>
@@ -1293,8 +1296,26 @@ function renderCalBackdateForm(ds){
   }, ds);
 }
 
+/* P4: countdown to Taper, separate from the race-day countdown in the header. */
+function renderTaperCountdown(){
+  const el = document.getElementById('taperCountdownArea');
+  if(!el) return;
+  const eraNow = era(today);
+  let html;
+  if(eraNow==='main'){
+    const days = daysBetween(today, TAPER_START);
+    html = `<div class="taper-countdown">อีก <b>${days}</b> วันจะเข้าเฟส Taper</div>`;
+  } else if(eraNow==='taper'){
+    html = `<div class="taper-countdown">อยู่ในช่วง <b>Taper</b> แล้ว</div>`;
+  } else {
+    html = `<div class="taper-countdown">อยู่ในช่วง <b>Race Week</b> แล้ว</div>`;
+  }
+  el.innerHTML = html;
+}
+
 /* ========================= RENDER: QUEUE (progress by type) ========================= */
 function renderQueue(){
+  renderTaperCountdown();
   const r0 = resolveToday(today);
   const eraName = r0.era==='raceweek' ? 'main' : r0.era;
   document.getElementById('queuePhaseLabel').textContent = phaseLabel(eraName);
