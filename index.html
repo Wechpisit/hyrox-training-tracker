@@ -387,7 +387,9 @@ function fixedRacePace(n){ return {distance:`${Math.min(3+n,7)}x1km`, pace:'6:00
 function fixedTemposhort(){ return {distance:'WU 10 นาที + Tempo 15-20 นาที + CD 5 นาที', pace:'6:00 /km', structure:'รักษาความแข็งแรงของ Threshold ไม่ต้องดันเพิ่ม'}; }
 function fixedRestMobility(){ return {distance:'-', pace:'-', structure:'พักผ่อน หรือยืดเหยียดเบาๆ เตรียมร่างกาย'}; }
 
-function plainTip(role){
+/** T4: `d` (optional) is the date the tip is being shown for — when it falls on a
+ * NIGHT1/NIGHT2 shift slot, a shift-fatigue acknowledgement is appended to the base tip. */
+function plainTip(role, d){
   const tips = {
     easy:'วิ่งช้าๆ สบายๆ พูดคุยได้ระหว่างวิ่ง เป็นวันฟื้นตัว',
     speed:'วันนี้เป็นวันซ้อมเร็ว วอร์มร่างกายให้ทั่วก่อนเริ่ม และหยุดทันทีถ้ารู้สึกเจ็บผิดปกติ',
@@ -404,7 +406,14 @@ function plainTip(role){
     weightLight:'เวทเบาลงมาก เน้นความเร็วการเคลื่อนไหว ไม่เน้นน้ำหนัก',
     easyShort:'วิ่งเบาๆ สั้นๆ ผ่อนคลาย',
   };
-  return tips[role] || 'ทำตามรายละเอียดด้านล่าง ถ้าไม่แน่ใจให้คุยกับ PT ก่อน';
+  let tip = tips[role] || 'ทำตามรายละเอียดด้านล่าง ถ้าไม่แน่ใจให้คุยกับ PT ก่อน';
+  if(d){
+    const slot = slotLabel(d);
+    if(slot==='NIGHT1' || slot==='NIGHT2'){
+      tip += ' วันนี้ต่อจากกะดึก ร่างกายอาจล้าจากการนอนไม่เป็นเวลา ฟังร่างกายตัวเองเป็นพิเศษ';
+    }
+  }
+  return tip;
 }
 function isRestRole(role){ return role==='restday'; }
 function isWeightRole(role){ return role==='weight'||role==='weightNight'||role==='weightLight'; }
@@ -646,7 +655,7 @@ function renderToday(){
     hero.innerHTML = `
       <div class="eyebrow">${phaseLabel(r.era)}</div>
       <h1>วันพัก</h1>
-      <div class="plain-tip">${plainTip('restday')}</div>
+      <div class="plain-tip">${plainTip('restday', today)}</div>
       <div class="structure">ไม่มีเซสชันซ้อมวันนี้ ให้ร่างกายพักเต็มที่</div>
     `;
     return;
@@ -705,7 +714,7 @@ function renderToday(){
   hero.innerHTML = `
     <div class="eyebrow">${phaseLabel(r.era)} · ครั้งที่ ${n}</div>
     <h1>${meta.name}</h1>
-    <div class="plain-tip">${plainTip(role)}</div>
+    <div class="plain-tip">${plainTip(role, today)}</div>
     ${buildPrevLineHtml(role, n)}
     <div class="meta-grid">
       <div class="meta-box"><div class="k">ระยะ/เวลา</div><div class="v">${sess.distance}</div></div>
