@@ -1462,6 +1462,7 @@ function renderProgress(){
   const logs = [...STATE.logs].sort((a,b)=>a.ts-b.ts);
   const speedLogs = logs.filter(l=>l.role==='speed' && !l.excludeFromStats && parsePaceToSec(l.paceBest||l.paceAvg));
   const longLogs = logs.filter(l=>l.role==='long' && !l.excludeFromStats && l.distance);
+  const easyLogs = logs.filter(l=>(l.role==='easy'||l.role==='easyRecovery') && !l.excludeFromStats && parsePaceToSec(l.paceAvg));
 
   const prGrid = document.getElementById('prGrid');
   let bestSpeedSec = null;
@@ -1475,6 +1476,7 @@ function renderProgress(){
     if(!isNaN(d) && (longestDist===null || d>longestDist)) longestDist=d;
   });
   const baselineTempo = parsePaceToSec(BASELINE.bestTempoPace);
+  const baselineEasy = parsePaceToSec(BASELINE.easyPace);
 
   const cards = [];
   cards.push(`<div class="pr-box"><div class="k">เพซซ้อมเร็วดีที่สุด</div>
@@ -1495,6 +1497,7 @@ function renderProgress(){
 
   const chartArea = document.getElementById('chartArea');
   chartArea.innerHTML = '';
+  chartArea.appendChild(makeChart('เทรนด์เพซ Easy Run', easyLogs.map(l=>parsePaceToSec(l.paceAvg)), easyLogs.map(l=>l.dateStr), baselineEasy, true, easyLogs.map(l=>l.pain?(l.note||'มีอาการเจ็บ'):null)));
   chartArea.appendChild(makeChart('เทรนด์เพซ Speed Session', speedLogs.map(l=>parsePaceToSec(l.paceBest||l.paceAvg)), speedLogs.map(l=>l.dateStr), baselineTempo, true, speedLogs.map(l=>l.pain?(l.note||'มีอาการเจ็บ'):null)));
   chartArea.appendChild(makeRaceProjectionCard());
   chartArea.appendChild(makeEfficiencyCard());
