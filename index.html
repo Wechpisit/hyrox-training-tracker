@@ -160,6 +160,11 @@
   .cal-detail .drow{font-size:12.5px;color:var(--muted);margin-top:3px;}
 
   .chart-card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:14px;}
+  .rpe-warning{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:rgba(255,59,48,0.12);border:1px solid var(--red);border-radius:10px;
+    padding:8px 10px;font-size:12px;color:var(--text);margin-bottom:8px;}
+  .rpe-warning button{background:none;border:none;color:var(--muted);font-size:16px;line-height:1;
+    cursor:pointer;padding:0 2px;}
   .chart-card .title{font-size:14.5px;font-weight:700;}
   .chart-card .sub{font-size:12px;color:var(--muted);margin-bottom:4px;}
   .chart-card .num{font-size:26px;font-weight:800;color:var(--yellow);margin:4px 0 6px;}
@@ -1549,6 +1554,7 @@ function renderProgress(){
   chartArea.appendChild(makeRaceProjectionCard());
   chartArea.appendChild(makeEfficiencyCard());
   chartArea.appendChild(makeChart('เทรนด์ระยะ Long Run (กม.)', longLogs.map(l=>parseFloat(l.distance)), longLogs.map(l=>l.dateStr), null, false));
+  chartArea.appendChild(makeRpeVsPaceCard());
 }
 function fmtDateShort(ds){
   if(!ds) return '';
@@ -1840,6 +1846,101 @@ function makeEfficiencyCard(){
   svgEl.addEventListener('pointerdown', (e)=>{ showTip(e.clientX); });
   svgEl.addEventListener('pointermove', (e)=>{ if(e.pointerType==='mouse') showTip(e.clientX); });
   svgEl.addEventListener('pointerleave', (e)=>{ if(e.pointerType==='mouse') hideTip(); });
+
+  return card;
+}
+
+/* ========================= RPE vs PACE (Performance #7) ========================= */
+/** Entries with an RPE recorded, oldest-first, regardless of whether pace is present —
+ * used only for the "3 high-RPE in a row" warning, which is about exertion trend alone. */
+function rpeEntriesForWarning(){
+  return STATE.logs.filter(l=>l.rpe!=null && !l.excludeFromStats).sort((a,b)=>a.ts-b.ts);
+}
+function computeRpeWarningActive(){
+  const last3 = rpeEntriesForWarning().slice(-3);
+  return last3.length===3 && last3.every(l=>l.rpe>=8);
+}
+/** Dismissible for the current app session only (plain JS var, not persisted) — resets to
+ * false on next real load, so a still-true warning reappears next time the app is opened. */
+let rpeWarningDismissed = false;
+
+function buildMiniTrendSvg(values, dates){
+  const w=300, h=64, pad=8;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max-min)||1;
+  const pts = values.map((v,i)=>{
+    const x = pad + (i/(Math.max(values.length-1,1)))*(w-2*pad);
+    const y = h-pad - ((v-min)/range)*(h-2*pad);
+    return [x,y];
+  });
+  const linePath = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(1)},${h-pad} L${pts[0][0].toFixed(1)},${h-pad} Z`;
+  const yLevels = [max, (max+min)/2, min].map(v=>{ const gy = h-pad - ((v-min)/range)*(h-2*pad); return {v, gy}; });
+  const gridLinesSvg = yLevels.map(g=>`<line x1="${pad}" y1="${g.gy.toFixed(1)}" x2="${w-pad}" y2="${g.gy.toFixed(1)}" stroke="#2A2A2A" stroke-width="1"/>`).join('');
+  const pointCircles = pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#F5D800"/>`).join('');
+  return `
+    <div class="chart-plot" style="height:${h}px;">
+      <svg class="chart-svg" viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">
+        ${gridLinesSvg}
+        <path d="${areaPath}" fill="#F5D800" fill-opacity="0.15"/>
+        <path d="${linePath}" fill="none" stroke="#F5D800" stroke-width="2.5"/>
+        ${pointCircles}
+      </svg>
+    </div>`;
+}
+
+function makeRpeVsPaceCard(){
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  const title = 'ความรู้สึกเหนื่อย (RPE) เทียบกับเพซ';
+
+  // both values required per entry so the two mini-charts stay index-aligned on the same timeline
+  const paired = STATE.logs
+    .filter(l=>l.rpe!=null && !l.excludeFromStats && parsePaceToSec(l.paceAvg)!=null)
+    .sort((a,b)=>a.ts-b.ts);
+
+  if(paired.length===0){
+    card.innerHTML = `<div class="title">${title}</div><div class="sub">ยังไม่มีข้อมูล RPE พร้อมเพซเพียงพอสำหรับกราฟนี้ บันทึก RPE ตอนซ้อมเพิ่มเติมเพื่อดูเทรนด์</div>`;
+    return card;
+  }
+
+  const warnActive = computeRpeWarningActive();
+  const warnHtml = (warnActive && !rpeWarningDismissed) ? `
+    <div class="rpe-warning" id="rpeWarningBanner">
+      <span>⚠️ ความเหนื่อยสูงต่อเนื่อง 3 ครั้งล่าสุด ลองพิจารณาลดโหลดหรือพักเพิ่ม</span>
+      <button type="button" id="rpeWarningDismiss" aria-label="ปิด">×</button>
+    </div>` : '';
+
+  const dates = paired.map(l=>l.dateStr);
+  const rpeVals = paired.map(l=>l.rpe);
+  const paceVals = paired.map(l=>parsePaceToSec(l.paceAvg));
+
+  const markPcts = [0, 0.3, 0.6];
+  let markIdxs = markPcts.map(p=>Math.round(p*(dates.length-1)));
+  markIdxs = [...new Set(markIdxs)];
+  const labelsHtml = markIdxs.map(i=>{
+    const pct = (dates.length>1 ? i/(dates.length-1) : 0)*100;
+    return `<span style="position:absolute;left:${pct}%;transform:translateX(${pct===0?'0':'-50%'});">${fmtDateShort(dates[i])}</span>`;
+  }).join('');
+
+  const latestRpe = rpeVals[rpeVals.length-1];
+  const latestPace = paceVals[paceVals.length-1];
+
+  card.innerHTML = `
+    <div class="title">${title}</div>
+    ${warnHtml}
+    <div class="sub">RPE ล่าสุด ${latestRpe}/10 · เพซล่าสุด ${fmtSec(latestPace)}/km</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">RPE (ยิ่งสูงยิ่งเหนื่อย)</div>
+    ${buildMiniTrendSvg(rpeVals, dates)}
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">เพซ (ยิ่งต่ำยิ่งดี)</div>
+    ${buildMiniTrendSvg(paceVals, dates)}
+    <div style="position:relative;height:14px;font-size:10.5px;color:var(--muted);margin-top:2px;">${labelsHtml}</div>
+  `;
+
+  const dismissBtn = card.querySelector('#rpeWarningDismiss');
+  if(dismissBtn){
+    dismissBtn.onclick = ()=>{ rpeWarningDismissed = true; renderProgress(); };
+  }
 
   return card;
 }
