@@ -311,6 +311,9 @@
   </div>
 
   <div class="panel" id="panel-progress">
+    <div class="section-title">อัตราการซ้อมสม่ำเสมอ</div>
+    <div class="chip-row" id="adherenceWindowChips" style="margin-bottom:10px;"></div>
+    <div id="adherenceArea"></div>
     <div class="section-title">สถิติส่วนตัว (จากจุดเริ่มต้น)</div>
     <div class="pr-grid" id="prGrid"></div>
     <div class="section-title">โหลดการซ้อม (ความปลอดภัย)</div>
@@ -983,7 +986,12 @@ function doSave(role, eraName, n, partial, extra, idPrefix, onSaved, targetDateS
     hrAvg: val('fHrAvg'), hrMax: val('fHrMax'), cadence: val('fCadence'), gct: val('fGct'),
     workoutType: extra.workoutType||'', note: val('fNote'),
     preCheckShinOk: extra.preCheckShinOk===undefined ? null : extra.preCheckShinOk,
-    preCheckSleepOk: extra.preCheckSleepOk===undefined ? null : extra.preCheckSleepOk
+    preCheckSleepOk: extra.preCheckSleepOk===undefined ? null : extra.preCheckSleepOk,
+    // Performance #8: role 'recovery' only ever exists via resolveToday()'s pendingRecovery
+    // override (see §3's day-type resolution order) — never a manual override option — so this
+    // is a reliable marker recorded at save-time, since pendingRecovery itself is transient and
+    // can't be reconstructed retroactively for a past date.
+    wasForcedRecovery: role==='recovery'
   };
   STATE.logs.push(entry);
   if(role && role!=='restday' && role!=='recovery'){
@@ -1614,7 +1622,83 @@ function renderWeeklyBreakdown(weeks){
   }).join('');
   detailEl.innerHTML = rows;
 }
+/* ========================= ADHERENCE RATE (Performance #8) ========================= */
+let adherenceWindowMode = '30d'; // '30d' | 'since'
+const ADHERENCE_MIN_SAMPLE = 5;
+
+function adherenceWindowBounds(mode){
+  if(mode==='30d'){
+    const start = new Date(today); start.setDate(start.getDate()-29);
+    return { start, end: new Date(today) };
+  }
+  const realLogs = STATE.logs.filter(l=>!l.historical && !l.excludeFromStats);
+  if(realLogs.length===0) return { start: new Date(today), end: new Date(today) };
+  const earliestDs = realLogs.reduce((min,l)=> (!min || l.dateStr<min) ? l.dateStr : min, null);
+  return { start: new Date(earliestDs), end: new Date(today) };
+}
+
+/** Race Week days are excluded (a fixed 4-day sequence, not queue-based, so "expected session"
+ * doesn't apply the same way). A day with a wasForcedRecovery log entry is also excluded from
+ * the denominator entirely, per spec: skipping the originally-planned session there was the
+ * correct safety behavior, not a lapse in adherence — not just excluded from the "missed" count. */
+function computeAdherence(mode){
+  const { start, end } = adherenceWindowBounds(mode);
+  let expected = 0, loggedDays = 0;
+  const d = new Date(start);
+  while(d <= end){
+    const ds = dateStr(d);
+    const dayLogs = STATE.logs.filter(l=>l.dateStr===ds && !l.historical && !l.excludeFromStats);
+    const forcedRecoveryDay = dayLogs.some(l=>l.wasForcedRecovery);
+    if(!forcedRecoveryDay){
+      let role;
+      if(STATE.dayOverride[ds]) role = STATE.dayOverride[ds];
+      else { const r = cycleRole(d); role = r.era==='raceweek' ? null : r.role; }
+      if(role && !isRestRole(role)){
+        expected++;
+        if(dayLogs.length>0) loggedDays++;
+      }
+    }
+    d.setDate(d.getDate()+1);
+  }
+  const startStr = dateStr(start), endStr = dateStr(end);
+  const entries = STATE.logs.filter(l=>!l.historical && !l.excludeFromStats && l.dateStr>=startStr && l.dateStr<=endStr);
+  const fullCount = entries.filter(l=>!l.partial).length;
+  return {
+    expected, loggedDays,
+    completionPct: expected>0 ? Math.round((loggedDays/expected)*100) : null,
+    entriesCount: entries.length, fullCount,
+    fullPct: entries.length>0 ? Math.round((fullCount/entries.length)*100) : null,
+  };
+}
+
+function renderAdherence(){
+  const chipsEl = document.getElementById('adherenceWindowChips');
+  if(chipsEl){
+    chipsEl.innerHTML = `
+      <div class="chip adh-toggle ${adherenceWindowMode==='30d'?'sel':''}" data-mode="30d">30 วันล่าสุด</div>
+      <div class="chip adh-toggle ${adherenceWindowMode==='since'?'sel':''}" data-mode="since">ตั้งแต่เริ่มบันทึก</div>
+    `;
+    chipsEl.querySelectorAll('.adh-toggle').forEach(c=>{
+      c.onclick = ()=>{ adherenceWindowMode = c.dataset.mode; renderProgress(); };
+    });
+  }
+
+  const el = document.getElementById('adherenceArea');
+  if(!el) return;
+  const a = computeAdherence(adherenceWindowMode);
+  const lowSample = a.expected>0 && a.expected < ADHERENCE_MIN_SAMPLE;
+  const disclaimerHtml = lowSample ? `<div class="sub" style="margin-top:6px;">ข้อมูลยังน้อย เปอร์เซ็นต์อาจไม่แม่นยำ</div>` : '';
+  const card1 = a.expected>0
+    ? `<div class="pr-box"><div class="k">อัตราการซ้อมครบตามแผน</div><div class="v">${a.completionPct}%</div><div class="base">${a.loggedDays} จาก ${a.expected} วันที่ควรซ้อม</div></div>`
+    : `<div class="pr-box"><div class="k">อัตราการซ้อมครบตามแผน</div><div class="v">ยังไม่มีข้อมูล</div><div class="base">ยังไม่มีวันที่ควรซ้อมในช่วงนี้</div></div>`;
+  const card2 = a.entriesCount>0
+    ? `<div class="pr-box"><div class="k">อัตราทำครบเซสชัน</div><div class="v">${a.fullPct}%</div><div class="base">${a.fullCount} จาก ${a.entriesCount} เซสชันทำครบเต็ม</div></div>`
+    : `<div class="pr-box"><div class="k">อัตราทำครบเซสชัน</div><div class="v">ยังไม่มีข้อมูล</div><div class="base">ยังไม่มีเซสชันที่บันทึกในช่วงนี้</div></div>`;
+  el.innerHTML = `<div class="pr-grid">${card1}${card2}</div>${disclaimerHtml}`;
+}
+
 function renderProgress(){
+  renderAdherence();
   renderWeeklyLoad();
   const logs = [...STATE.logs].sort((a,b)=>a.ts-b.ts);
   const speedLogs = logs.filter(l=>l.role==='speed' && !l.excludeFromStats && parsePaceToSec(l.paceBest||l.paceAvg));
