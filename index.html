@@ -143,6 +143,8 @@
   .caldaycell.today .num{color:#0A0A0A;font-weight:700;}
   .caldaycell .abbr{font-size:9.5px;font-weight:800;margin-top:1px;}
   .caldaycell .dot{width:6px;height:6px;border-radius:50%;margin-top:2px;}
+  .caldaycell .dotrow{display:flex;gap:2px;margin-top:2px;}
+  .caldaycell .dotrow .dot{margin-top:0;}
   .caldaycell.selected{outline:2px solid #fff;}
   .caldaycell.haspain{box-shadow:inset 0 0 0 2px var(--red);}
 
@@ -175,6 +177,9 @@
   .pr-box .k{font-size:11.5px;color:var(--muted);}
   .pr-box .v{font-size:18px;font-weight:800;margin-top:3px;color:var(--yellow);}
   .pr-box .base{font-size:11px;color:var(--muted);margin-top:2px;}
+
+  .history-summary{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:12px;font-size:13.5px;color:var(--muted);}
+  .history-summary b{color:var(--text);font-weight:700;}
 
   .hrow{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
   .hrow .top{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;}
@@ -279,6 +284,7 @@
 
   <div class="panel" id="panel-history">
     <div class="section-title">ประวัติการซ้อมทั้งหมด (แก้ไข/ลบได้)</div>
+    <div id="historySummary"></div>
     <div id="historyFilters"></div>
     <div id="historyList"></div>
     <details class="backup">
@@ -999,12 +1005,17 @@ const LEGEND_ITEMS = [
   ['long','Long Run'], ['recovery','Active Recovery'],
 ];
 
-function findLogForDate(ds){
-  // prefer a real (non-historical) logged entry; fall back to historical import if that's all there is
+function findAllLogsForDate(ds){
+  // prefer real (non-historical) logged entries; fall back to historical imports if that's all there is.
+  // a day can have more than one real session (multi-session Today logging, backdated Calendar logging).
   const matches = STATE.logs.filter(l=>l.dateStr===ds);
-  if(matches.length===0) return null;
-  const real = matches.find(l=>!l.historical);
-  return real || matches[matches.length-1];
+  if(matches.length===0) return [];
+  const real = matches.filter(l=>!l.historical);
+  return (real.length ? real : matches).slice().sort((a,b)=>a.ts-b.ts);
+}
+function findLogForDate(ds){
+  const logs = findAllLogsForDate(ds);
+  return logs.length ? logs[0] : null;
 }
 function hasPainOnDate(ds){
   return STATE.logs.some(l=>l.dateStr===ds && l.pain===true);
@@ -1067,11 +1078,13 @@ function renderCalendar(){
         inner += `<div class="abbr" style="color:#0A0A0A;font-size:8.5px;">${slotLabel(d)}</div>`;
       }
     } else if(isPast){
-      const log = findLogForDate(ds);
-      if(log && !isRestRole(log.role) && log.role!=='raceweek'){
-        const color = ROLE_COLOR[log.role]||'#8A8A8A';
-        const abbr = ROLE_ABBR[log.role]||'';
-        inner += `<div class="abbr" style="color:${color}">${abbr}</div><div class="dot" style="background:${color}"></div>`;
+      const activeLogs = findAllLogsForDate(ds).filter(l=>!isRestRole(l.role) && l.role!=='raceweek');
+      if(activeLogs.length){
+        const primary = activeLogs[0];
+        const color = ROLE_COLOR[primary.role]||'#8A8A8A';
+        const abbr = ROLE_ABBR[primary.role]||'';
+        const dotsHtml = activeLogs.slice(0,4).map(l=>`<span class="dot" style="background:${ROLE_COLOR[l.role]||'#8A8A8A'}"></span>`).join('');
+        inner += `<div class="abbr" style="color:${color}">${abbr}${activeLogs.length>1?'+':''}</div><div class="dotrow">${dotsHtml}</div>`;
       } else {
         inner += `<div class="abbr" style="color:var(--muted);font-size:8.5px;">${slotLabel(d)}</div>`;
       }
@@ -1136,16 +1149,20 @@ function renderCalDetail(){
     return;
   }
   const backdateAreaHtml = isPast ? `<div id="calBackdateArea"></div>` : '';
-  const log = findLogForDate(ds);
-  if(log){
-    const meta = ROLE_META[log.role]||{name:log.role};
-    const stats = [];
-    if(log.distance) stats.push('ระยะ '+log.distance+' กม.');
-    if(log.time) stats.push('เวลา '+log.time);
-    if(log.paceAvg) stats.push('เพซ '+log.paceAvg);
-    if(log.hrAvg) stats.push('HR '+log.hrAvg);
-    const painNoteRow = (log.pain && log.note) ? `<div class="drow" style="color:var(--red)">${log.note}</div>` : '';
-    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div><div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>${painNoteRow}${backdateAreaHtml}`;
+  const logs = findAllLogsForDate(ds);
+  if(logs.length){
+    const sessionsHtml = logs.map((log,i)=>{
+      const meta = ROLE_META[log.role]||{name:log.role};
+      const stats = [];
+      if(log.distance) stats.push('ระยะ '+log.distance+' กม.');
+      if(log.time) stats.push('เวลา '+log.time);
+      if(log.paceAvg) stats.push('เพซ '+log.paceAvg);
+      if(log.hrAvg) stats.push('HR '+log.hrAvg);
+      const painNoteRow = (log.pain && log.note) ? `<div class="drow" style="color:var(--red)">${log.note}</div>` : '';
+      const sessLabel = logs.length>1 ? `<div class="drow" style="color:var(--text);font-weight:700;margin-top:${i>0?'10px':'0'};">เซสชันที่ ${i+1}: ${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div>` : `<div class="drow">${meta.name}${log.pain?' · <span style="color:var(--red)">มีอาการเจ็บ</span>':''}</div>`;
+      return `${sessLabel}<div class="drow">${stats.join(' · ')||'ไม่มีรายละเอียดเพิ่มเติม'}</div>${painNoteRow}`;
+    }).join('');
+    el.innerHTML = `<div class="dtitle">${dstr} ${label}</div>${sessionsHtml}${backdateAreaHtml}`;
   } else {
     el.innerHTML = `<div class="dtitle">${dstr} ${label}</div><div class="drow">${isPast?'ไม่มีข้อมูลบันทึกไว้สำหรับวันนี้':'ยังไม่ถึงวันนี้ — ยังไม่มีการวางแผนตายตัว (ระบบเป็นคิว ไม่ผูกวันที่)'}</div>${backdateAreaHtml}`;
   }
@@ -1849,8 +1866,31 @@ function renderHistoryFilters(){
   };
 }
 
+/* ========================= HISTORY SUMMARY (H2) ========================= */
+function summarizeHistoryLogs(logs){
+  const n = logs.length;
+  const km = logs.reduce((s,l)=>s+(parseFloat(l.distance)||0),0);
+  let earliest = null;
+  logs.forEach(l=>{ if(!earliest || l.dateStr < earliest) earliest = l.dateStr; });
+  return {n, km, earliest};
+}
+function renderHistorySummary(){
+  const el = document.getElementById('historySummary');
+  const fmtDate = (ds)=> ds ? new Date(ds).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}) : '--';
+  const all = STATE.logs.filter(l=>!l.excludeFromStats);
+  const sAll = summarizeHistoryLogs(all);
+  if(!historyFiltersActive()){
+    el.innerHTML = `<div class="history-summary">ทั้งหมด <b>${sAll.n}</b> ครั้ง · รวม <b>${sAll.km.toFixed(1)}</b> กม. · ตั้งแต่ ${fmtDate(sAll.earliest)}</div>`;
+    return;
+  }
+  const filtered = all.filter(passesHistoryFilters);
+  const sFiltered = summarizeHistoryLogs(filtered);
+  el.innerHTML = `<div class="history-summary">แสดง <b>${sFiltered.n}</b> จาก ${sAll.n} ครั้ง · รวม <b>${sFiltered.km.toFixed(1)}</b> กม. · ตั้งแต่ ${fmtDate(sFiltered.earliest)}</div>`;
+}
+
 /* ========================= RENDER: HISTORY (edit/delete) ========================= */
 function renderHistory(){
+  renderHistorySummary();
   renderHistoryFilters();
   const el = document.getElementById('historyList');
   const logs = STATE.logs.filter(passesHistoryFilters).sort((a,b)=>b.ts-a.ts);
