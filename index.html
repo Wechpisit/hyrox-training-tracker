@@ -1084,12 +1084,16 @@ const LEGEND_ITEMS = [
 ];
 
 function findAllLogsForDate(ds){
-  // prefer real (non-historical) logged entries; fall back to historical imports if that's all there is.
-  // a day can have more than one real session (multi-session Today logging, backdated Calendar logging).
+  // Returns every entry for the date, historical or real — a day can have both (a historical
+  // CSV import plus a newly-logged real session) and both should show in the Calendar detail
+  // panel; dropping one silently loses real data. Real entries are ordered first so callers that
+  // only want a single "primary" entry (findLogForDate(), the day-cell abbreviation/color) keep
+  // preferring a real entry over a historical one, matching the old single-result behavior.
   const matches = STATE.logs.filter(l=>l.dateStr===ds);
   if(matches.length===0) return [];
-  const real = matches.filter(l=>!l.historical);
-  return (real.length ? real : matches).slice().sort((a,b)=>a.ts-b.ts);
+  const real = matches.filter(l=>!l.historical).sort((a,b)=>a.ts-b.ts);
+  const hist = matches.filter(l=>l.historical).sort((a,b)=>a.ts-b.ts);
+  return real.concat(hist);
 }
 function findLogForDate(ds){
   const logs = findAllLogsForDate(ds);
